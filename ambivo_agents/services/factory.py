@@ -73,15 +73,30 @@ class ProxyAgent(BaseAgent):
             # Improved routing logic with more specific patterns
             target_agent = None
 
-            # Knowledge Base routing (HIGHEST PRIORITY for KB operations)
+            # Web search routing (HIGHEST PRIORITY for web search requests)
             if any(keyword in content for keyword in [
+                'search web', 'web search', 'find online', 'search_web',
+                'brave search', 'aves search', 'search the web', 'search for'
+            ]):
+                # Look for WebSearchAgent by class name or agent key
+                for agent_key, agent in self.agent_registry.items():
+                    if ('WebSearchAgent' in agent.__class__.__name__ or
+                            'web_search' in agent_key or
+                            'websearch' in agent_key):
+                        target_agent = agent
+                        break
+
+            # Knowledge Base routing (for KB operations)
+            elif any(keyword in content for keyword in [
                 'ingest_document', 'ingest_text', 'ingest', 'knowledge base', 'kb',
                 'query_knowledge_base', 'query', 'search documents', 'vector database',
                 'qdrant', 'semantic search', 'document', 'pdf', 'docx'
             ]):
                 # Look for KnowledgeBaseAgent
-                for agent in self.agent_registry.values():
-                    if 'KnowledgeBaseAgent' in agent.__class__.__name__:
+                for agent_key, agent in self.agent_registry.items():
+                    if ('KnowledgeBaseAgent' in agent.__class__.__name__ or
+                            'knowledge_base' in agent_key or
+                            'knowledge' in agent_key):
                         target_agent = agent
                         break
 
@@ -102,8 +117,10 @@ class ProxyAgent(BaseAgent):
                 'apartments.com', 'scrape website'
             ]):
                 # Look for WebScraperAgent
-                for agent in self.agent_registry.values():
-                    if 'WebScraperAgent' in agent.__class__.__name__:
+                for agent_key, agent in self.agent_registry.items():
+                    if ('WebScraperAgent' in agent.__class__.__name__ or
+                            'web_scraper' in agent_key or
+                            'webscraper' in agent_key):
                         target_agent = agent
                         break
 
@@ -113,19 +130,10 @@ class ProxyAgent(BaseAgent):
                 'mp4', 'mp3', 'wav', 'extract audio'
             ]):
                 # Look for MediaEditorAgent
-                for agent in self.agent_registry.values():
-                    if 'MediaEditorAgent' in agent.__class__.__name__:
-                        target_agent = agent
-                        break
-
-            # Web search routing
-            elif any(keyword in content for keyword in [
-                'search web', 'web search', 'find online', 'search_web',
-                'brave search', 'aves search'
-            ]):
-                # Look for WebSearchAgent
-                for agent in self.agent_registry.values():
-                    if 'WebSearchAgent' in agent.__class__.__name__:
+                for agent_key, agent in self.agent_registry.items():
+                    if ('MediaEditorAgent' in agent.__class__.__name__ or
+                            'media_editor' in agent_key or
+                            'mediaeditor' in agent_key):
                         target_agent = agent
                         break
 
@@ -151,8 +159,10 @@ class ProxyAgent(BaseAgent):
 
                 return response
             else:
+                available_agents = [f"{agent.__class__.__name__} ({agent_id})" for agent_id, agent in
+                                    self.agent_registry.items()]
                 error_response = self.create_response(
-                    content=f"I couldn't find an appropriate agent to handle your request. Available agents: {[agent.__class__.__name__ for agent in self.agent_registry.values()]}",
+                    content=f"I couldn't find an appropriate agent to handle your request. Available agents: {available_agents}",
                     recipient_id=message.sender_id,
                     message_type=MessageType.ERROR,
                     session_id=message.session_id,
@@ -305,7 +315,7 @@ class AgentFactory:
 
         elif agent_type == "media_editor":
             if not capabilities.get('media_editor', False):
-                raise ValueError("Media processing not enabled in agent_config.yaml")
+                raise ValueError("Media editor not enabled in agent_config.yaml")
             from ..agents.media_editor import MediaEditorAgent
             return MediaEditorAgent(agent_id, memory_manager, llm_service, **kwargs)
 

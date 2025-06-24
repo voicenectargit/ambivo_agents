@@ -97,17 +97,86 @@ class AgentSession:
                 config=self.config
             )
 
-        # Researcher Agent (based on configuration)
-        researcher_id = f"researcher_{self.session_id}"
-        researcher_memory = create_redis_memory_manager(researcher_id, self.redis_config)
+        # Create specialized agents based on enabled capabilities
+        # This replaces the single RESEARCHER role with specific agent types
 
-        self.agents['researcher'] = AgentFactory.create_agent(
-            role=AgentRole.RESEARCHER,
-            agent_id=researcher_id,
-            memory_manager=researcher_memory,
-            llm_service=self.llm_service,
-            config=self.config
-        )
+        # Web Search Agent (if enabled)
+        if self.capabilities.get('web_search', False):
+            search_id = f"websearch_{self.session_id}"
+            search_memory = create_redis_memory_manager(search_id, self.redis_config)
+
+            try:
+                from ..agents.web_search import WebSearchAgent
+                self.agents['web_search'] = WebSearchAgent(
+                    agent_id=search_id,
+                    memory_manager=search_memory,
+                    llm_service=self.llm_service
+                )
+                self.logger.info("Created WebSearchAgent")
+            except Exception as e:
+                self.logger.error(f"Failed to create WebSearchAgent: {e}")
+
+        # Knowledge Base Agent (if enabled)
+        if self.capabilities.get('knowledge_base', False):
+            kb_id = f"knowledge_{self.session_id}"
+            kb_memory = create_redis_memory_manager(kb_id, self.redis_config)
+
+            try:
+                from ..agents.knowledge_base import KnowledgeBaseAgent
+                self.agents['knowledge_base'] = KnowledgeBaseAgent(
+                    agent_id=kb_id,
+                    memory_manager=kb_memory,
+                    llm_service=self.llm_service
+                )
+                self.logger.info("Created KnowledgeBaseAgent")
+            except Exception as e:
+                self.logger.error(f"Failed to create KnowledgeBaseAgent: {e}")
+
+        # Web Scraper Agent (if enabled)
+        if self.capabilities.get('web_scraping', False):
+            scraper_id = f"webscraper_{self.session_id}"
+            scraper_memory = create_redis_memory_manager(scraper_id, self.redis_config)
+
+            try:
+                from ..agents.web_scraper import WebScraperAgent
+                self.agents['web_scraper'] = WebScraperAgent(
+                    agent_id=scraper_id,
+                    memory_manager=scraper_memory,
+                    llm_service=self.llm_service
+                )
+                self.logger.info("Created WebScraperAgent")
+            except Exception as e:
+                self.logger.error(f"Failed to create WebScraperAgent: {e}")
+
+        # Media Editor Agent (if enabled)
+        if self.capabilities.get('media_editor', False):
+            media_id = f"mediaeditor_{self.session_id}"
+            media_memory = create_redis_memory_manager(media_id, self.redis_config)
+
+            try:
+                from ..agents.media_editor import MediaEditorAgent
+                self.agents['media_editor'] = MediaEditorAgent(
+                    agent_id=media_id,
+                    memory_manager=media_memory,
+                    llm_service=self.llm_service
+                )
+                self.logger.info("Created MediaEditorAgent")
+            except Exception as e:
+                self.logger.error(f"Failed to create MediaEditorAgent: {e}")
+
+        # Fallback: Create a general researcher agent if no specialized agents were created
+        if not any(key in self.agents for key in ['web_search', 'knowledge_base', 'web_scraper', 'media_editor']):
+            researcher_id = f"researcher_{self.session_id}"
+            researcher_memory = create_redis_memory_manager(researcher_id, self.redis_config)
+
+            self.agents['researcher'] = AgentFactory.create_agent(
+                role=AgentRole.RESEARCHER,
+                agent_id=researcher_id,
+                memory_manager=researcher_memory,
+                llm_service=self.llm_service,
+                config=self.config
+            )
+            self.logger.info("Created fallback researcher agent")
 
         # Proxy Agent (if enabled)
         if self.capabilities.get('proxy', True):
