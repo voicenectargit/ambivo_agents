@@ -1,0 +1,379 @@
+# Enhanced Agent Configuration with Knowledge Base and Web Search
+# agent_config.yaml - TEMPLATE VERSION
+
+docker:
+  images:
+  - sgosain/amb-ubuntu-python-public-pod
+  memory_limit: 512m
+  timeout: 60
+  work_dir: /opt/ambivo/work_dir
+
+llm:
+  anthropic_api_key: sk-ant-api03-YOUR_ANTHROPIC_API_KEY_HERE
+  aws_access_key_id: YOUR_AWS_ACCESS_KEY_ID
+  aws_secret_access_key: YOUR_AWS_SECRET_ACCESS_KEY
+  max_tokens: 4000
+  openai_api_key: sk-proj-YOUR_OPENAI_API_KEY_HERE
+  preferred_provider: openai
+  temperature: 0.5
+  voyage_api_key: pa-YOUR_VOYAGE_API_KEY_HERE
+
+# Memory management settings
+memory_management:
+  compression:
+    enabled: true
+    algorithm: "lz4"
+    compression_level: 1
+  cache:
+    enabled: true
+    max_size: 1000
+    ttl_seconds: 300
+  backup:
+    enabled: true
+    interval_minutes: 60
+    backup_directory: "./backups"
+
+redis:
+  db: 0
+  host: YOUR_REDIS_HOST_HERE
+  password: YOUR_REDIS_PASSWORD_HERE
+  port: YOUR_REDIS_PORT_HERE
+
+service:
+  enable_metrics: true
+  log_level: INFO
+  log_to_file: true
+  max_sessions: 100
+  session_timeout: 3600
+
+# Knowledge Base Configuration (Qdrant Cloud)
+knowledge_base:
+  # Hosted Qdrant Cloud Configuration
+  qdrant_url: "https://YOUR_QDRANT_CLUSTER_ID.YOUR_REGION.gcp.cloud.qdrant.io:6333"
+  qdrant_api_key: "YOUR_QDRANT_API_KEY_HERE"
+
+  # Feature Settings
+  enable_file_processing: true
+  enable_web_ingestion: true
+  enable_api_calls: true
+  enable_database_queries: false  # Set to true if you need database connectivity
+
+  # File Processing Limits
+  max_file_size_mb: 50
+  supported_file_types:
+    - ".pdf"
+    - ".txt"
+    - ".docx"
+    - ".md"
+    - ".html"
+    - ".csv"
+    - ".json"
+
+  # Collection Settings
+  default_collection_prefix: "kb"
+  vector_size: 1536  # OpenAI embeddings dimension
+  distance_metric: "cosine"
+
+  # Performance Settings
+  similarity_top_k: 5  # Number of similar documents to retrieve
+  chunk_size: 1024     # Text chunk size for processing
+  chunk_overlap: 20    # Overlap between text chunks
+
+  # Security Settings
+  max_api_calls_per_session: 100
+  allowed_domains:
+    - "*.com"
+    - "*.org"
+    - "*.edu"
+  blocked_domains:
+    - "*.exe"
+    - "*.zip"
+
+
+web_search:
+  # Search API Keys - Multiple providers for redundancy
+  brave_api_key: "YOUR_BRAVE_SEARCH_API_KEY_HERE"
+  avesapi_api_key: "YOUR_AVES_API_KEY_HERE"
+
+  # Search Settings
+  default_max_results: 10
+  max_results_limit: 50
+  search_timeout_seconds: 10
+  enable_caching: true
+  cache_ttl_minutes: 30
+
+  # Provider Priorities (lower number = higher priority)
+  provider_priorities:
+    brave: 2      # Primary provider
+    aves: 1       # Secondary provider
+
+  # Search Features
+  enable_news_search: true
+  enable_academic_search: true
+  enable_image_search: false
+  enable_video_search: false
+
+  # Geographic Settings
+  default_country: "US"
+  default_language: "en"
+  supported_countries:
+    - "US"
+    - "GB"
+    - "CA"
+    - "AU"
+
+  # Content Filtering
+  safe_search: "moderate"  # strict, moderate, off
+  filter_adult_content: true
+  blocked_domains:
+    - "spam-site.com"
+    - "malware-site.com"
+
+  # Rate Limiting
+  requests_per_minute: 60
+  requests_per_hour: 1000
+  cooldown_on_error_minutes: 5
+
+  # News Search Specific Settings
+  news_search:
+    default_days_back: 7
+    max_days_back: 30
+    preferred_sources:
+      - "reuters.com"
+      - "bbc.com"
+      - "apnews.com"
+
+  # Academic Search Specific Settings
+  academic_search:
+    preferred_sources:
+      - "scholar.google.com"
+      - "arxiv.org"
+      - "pubmed.ncbi.nlm.nih.gov"
+      - "researchgate.net"
+
+  # Performance Settings
+  connection_pool_size: 10
+  retry_attempts: 3
+  retry_delay_seconds: 1
+
+  # Security Settings
+  max_searches_per_session: 100
+  require_user_agent: true
+  custom_user_agent: "EnhancedAgentSystem/1.0"
+
+# Agent Capabilities Configuration
+agent_capabilities:
+  # Enable/disable agent types
+  enable_knowledge_base: true
+  enable_web_search: true
+  enable_code_execution: true
+  enable_file_processing: true
+  enable_web_ingestion: true
+  enable_api_calls: true
+  enable_web_scraping: true
+
+  # Cross-agent features
+  enable_agent_collaboration: true
+  enable_result_synthesis: true
+  enable_multi_source_validation: true
+
+  # Performance limits
+  max_concurrent_operations: 5
+  operation_timeout_seconds: 30
+  max_memory_usage_mb: 500
+
+aws:
+  access_key_id: "YOUR_AWS_ACCESS_KEY_ID_HERE"
+  secret_access_key: "YOUR_AWS_SECRET_ACCESS_KEY_HERE"
+  region: "us-east-1"
+
+# Media Processing Configuration
+media_processing:
+  # Docker Configuration
+  docker_image: "sgosain/amb-ubuntu-python-public-pod"
+  work_dir: "/opt/ambivo/work_dir"
+
+  # File Handling
+  input_dir: "./media_input"               # Input files directory
+  output_dir: "./media_output"             # Output files directory
+  temp_dir: "/tmp/media_processing"        # Temporary files directory
+
+  # Processing Limits
+  timeout: 300                             # Processing timeout (5 minutes)
+  max_file_size_gb: 5                      # Maximum file size limit
+  max_concurrent_jobs: 3                   # Concurrent processing jobs
+
+  # FFmpeg Configuration
+  ffmpeg_threads: 4                        # Number of FFmpeg threads
+  enable_gpu_acceleration: false           # Enable NVIDIA GPU acceleration
+  gpu_codec: "h264_nvenc"                  # GPU codec (if GPU enabled)
+  memory_limit: "2g"                       # Docker memory limit
+
+  # Quality Presets
+  quality_presets:
+    ultra:
+      crf: 15
+      preset: "veryslow"
+      description: "Ultra high quality (very slow)"
+    high:
+      crf: 18
+      preset: "slow"
+      description: "High quality (slow)"
+    medium:
+      crf: 23
+      preset: "medium"
+      description: "Balanced quality and speed"
+    low:
+      crf: 28
+      preset: "fast"
+      description: "Lower quality (fast)"
+    web:
+      crf: 25
+      preset: "fast"
+      description: "Web optimized"
+    mobile:
+      crf: 30
+      preset: "veryfast"
+      description: "Mobile optimized"
+
+  # Supported Formats
+  supported_video_formats:
+    - ".mp4"
+    - ".avi"
+    - ".mov"
+    - ".mkv"
+    - ".webm"
+    - ".flv"
+    - ".wmv"
+    - ".m4v"
+    - ".3gp"
+
+  supported_audio_formats:
+    - ".mp3"
+    - ".wav"
+    - ".aac"
+    - ".flac"
+    - ".ogg"
+    - ".m4a"
+    - ".wma"
+    - ".opus"
+
+  supported_image_formats:
+    - ".jpg"
+    - ".jpeg"
+    - ".png"
+    - ".bmp"
+    - ".tiff"
+    - ".webp"
+
+  # Default Settings
+  default_video_codec: "h264"
+  default_audio_codec: "aac"
+  default_audio_bitrate: "192k"
+  default_audio_sample_rate: 44100
+  default_thumbnail_width: 320
+  default_thumbnail_format: "jpg"
+
+  # Advanced Options
+  enable_hardware_acceleration: false      # Hardware acceleration (experimental)
+  enable_streaming_processing: false       # Stream processing for large files
+  enable_batch_processing: true            # Allow batch operations
+  preserve_metadata: true                  # Keep original file metadata
+  auto_cleanup_temp: true                  # Auto-cleanup temporary files
+
+  # Error Handling
+  max_retries: 3                          # Max retry attempts
+  retry_delay: 5                          # Delay between retries (seconds)
+  continue_on_error: false                # Continue batch processing on errors
+
+  # Monitoring
+  enable_progress_tracking: true          # Track processing progress
+  log_ffmpeg_output: true                 # Log FFmpeg command output
+  performance_logging: true               # Log performance metrics
+
+
+# Enhanced Web Scraping Configuration - Docker + Proxy Mode
+web_scraping:
+  # OPTION 1: Docker + Proxy (Best of both worlds)
+  docker_image: "sgosain/amb-ubuntu-python-public-pod"  # Enable Docker
+  proxy_enabled: true                                    # Enable Proxy
+  proxy_config:
+    http_proxy: "http://YOUR_SCRAPER_USERNAME:YOUR_SCRAPER_API_KEY@proxy-server.scraperapi.com:8001"
+
+  # Performance and Limits
+  timeout: 120
+  rate_limit_seconds: 2.0
+  max_concurrent_requests: 2  # Lower for Docker mode
+
+  # Content Extraction
+  max_content_size_mb: 5      # Smaller for Docker efficiency
+  max_links_per_page: 50      # Reduced for Docker processing
+  max_images_per_page: 25
+
+  # Docker-specific settings
+  docker_memory_limit: "2g"
+  docker_timeout: 120         # Extra time for container startup
+  docker_cleanup: true        # Auto-cleanup containers
+
+  # Proxy settings for Docker
+  proxy_timeout: 30
+  proxy_retries: 2
+  ssl_verify: false           # Required for proxy compatibility
+
+  # Browser Configuration for Docker
+  browser_config:
+    headless: true
+    viewport_width: 1920
+    viewport_height: 1080
+    disable_images: false     # Keep images for full rendering
+    user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+
+  # Output Configuration
+  default_output_format: "json"
+  compress_output: true       # Compress Docker output
+  max_response_size: "10MB"   # Limit Docker response size
+
+# Alternative configurations:
+
+# OPTION 2: Proxy only (current mode)
+# web_scraping:
+#   proxy_enabled: true
+#   proxy_config:
+#     http_proxy: "http://YOUR_SCRAPER_USERNAME:YOUR_SCRAPER_API_KEY@proxy-server.scraperapi.com:8001"
+#   # No docker_image = proxy mode
+
+# OPTION 3: Docker only (no proxy)
+# web_scraping:
+#   docker_image: "sgosain/amb-ubuntu-python-public-pod"
+#   proxy_enabled: false
+#   # Docker without proxy
+
+# OPTION 4: Local only (no Docker, no proxy)
+# web_scraping:
+#   proxy_enabled: false
+#   # No docker_image = local mode
+
+# =============================================================================
+# CONFIGURATION INSTRUCTIONS:
+# =============================================================================
+#
+# 1. Replace all placeholder values with your actual credentials:
+#    - YOUR_ANTHROPIC_API_KEY_HERE: Get from https://console.anthropic.com
+#    - YOUR_OPENAI_API_KEY_HERE: Get from https://platform.openai.com
+#    - YOUR_VOYAGE_API_KEY_HERE: Get from https://www.voyageai.com
+#    - YOUR_BRAVE_SEARCH_API_KEY_HERE: Get from https://brave.com/search/api/
+#    - YOUR_AVES_API_KEY_HERE: Get from your AvesAPI dashboard
+#    - YOUR_QDRANT_API_KEY_HERE: Get from https://cloud.qdrant.io
+#    - YOUR_REDIS_HOST_HERE, YOUR_REDIS_PASSWORD_HERE, YOUR_REDIS_PORT_HERE
+#    - YOUR_AWS_ACCESS_KEY_ID_HERE, YOUR_AWS_SECRET_ACCESS_KEY_HERE
+#    - YOUR_SCRAPER_USERNAME, YOUR_SCRAPER_API_KEY: ScraperAPI credentials
+#
+# 2. Update the Qdrant URL with your actual cluster details:
+#    - Replace YOUR_QDRANT_CLUSTER_ID with your cluster ID
+#    - Replace YOUR_REGION with your cluster region
+#
+# 3. Customize other settings as needed for your use case
+#
+# 4. IMPORTANT: Never commit this file with real credentials to version control!
+#    Add agent_config.yaml to your .gitignore file.
+# =============================================================================
