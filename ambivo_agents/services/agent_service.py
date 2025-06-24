@@ -1,4 +1,3 @@
-
 # ambivo_agents/services/agent_service.py
 """
 Agent Service for managing agent sessions and message processing.
@@ -14,7 +13,14 @@ from datetime import datetime, timedelta
 from ..core.base import AgentRole, AgentMessage, MessageType, ExecutionContext
 from ..core.memory import create_redis_memory_manager
 from ..core.llm import create_multi_provider_llm_service
-from ..config.loader import load_config, get_config_section, validate_agent_capabilities
+from ..config.loader import (
+    load_config,
+    get_config_section,
+    validate_agent_capabilities,
+    get_available_agent_types,
+    get_enabled_capabilities,
+    get_available_agent_type_names
+)
 from .factory import AgentFactory
 
 
@@ -28,7 +34,10 @@ class AgentSession:
         self.redis_config = get_config_section('redis', self.config)
         self.llm_config = get_config_section('llm', self.config)
         self.service_config = self.config.get('service', {})
+
+        # Use centralized capability checking
         self.capabilities = validate_agent_capabilities(self.config)
+        self.available_agent_types = get_available_agent_types(self.config)
 
         self.preferred_llm_provider = preferred_llm_provider or self.llm_config.get('preferred_provider', 'openai')
         self.agents = {}
@@ -71,11 +80,12 @@ class AgentSession:
             role=AgentRole.ASSISTANT,
             agent_id=assistant_id,
             memory_manager=assistant_memory,
-            llm_service=self.llm_service
+            llm_service=self.llm_service,
+            config=self.config
         )
 
         # Code Executor Agent (if enabled)
-        if self.capabilities.get('enable_code_execution', False):
+        if self.capabilities.get('code_execution', False):
             executor_id = f"executor_{self.session_id}"
             executor_memory = create_redis_memory_manager(executor_id, self.redis_config)
 
@@ -83,7 +93,8 @@ class AgentSession:
                 role=AgentRole.CODE_EXECUTOR,
                 agent_id=executor_id,
                 memory_manager=executor_memory,
-                llm_service=self.llm_service
+                llm_service=self.llm_service,
+                config=self.config
             )
 
         # Researcher Agent (based on configuration)
@@ -94,11 +105,12 @@ class AgentSession:
             role=AgentRole.RESEARCHER,
             agent_id=researcher_id,
             memory_manager=researcher_memory,
-            llm_service=self.llm_service
+            llm_service=self.llm_service,
+            config=self.config
         )
 
         # Proxy Agent (if enabled)
-        if self.capabilities.get('enable_proxy_mode', True):
+        if self.capabilities.get('proxy', True):
             proxy_id = f"proxy_{self.session_id}"
             proxy_memory = create_redis_memory_manager(proxy_id, self.redis_config)
 
@@ -106,7 +118,8 @@ class AgentSession:
                 role=AgentRole.PROXY,
                 agent_id=proxy_id,
                 memory_manager=proxy_memory,
-                llm_service=self.llm_service
+                llm_service=self.llm_service,
+                config=self.config
             )
 
             # Register all agents with proxy
@@ -115,7 +128,7 @@ class AgentSession:
 
             self.agents['proxy'] = self.proxy_agent
 
-        enabled_capabilities = [cap for cap, enabled in self.capabilities.items() if enabled]
+        enabled_capabilities = get_enabled_capabilities(self.config)
         self.logger.info(f"Initialized session with capabilities: {enabled_capabilities}")
 
     async def process_message(self,
@@ -153,7 +166,8 @@ class AgentSession:
             metadata={
                 'message_count': self.message_count,
                 'session_age': (datetime.now() - self.created_at).total_seconds(),
-                'capabilities': [cap for cap, enabled in self.capabilities.items() if enabled],
+                'enabled_capabilities': get_enabled_capabilities(self.config),
+                'available_agent_types': get_available_agent_type_names(self.config),
                 'config_source': 'agent_config.yaml',
                 **(metadata or {})
             }
@@ -173,7 +187,8 @@ class AgentSession:
                 'session_id': self.session_id,
                 'message_count': self.message_count,
                 'processing_time': (datetime.now() - self.last_activity).total_seconds(),
-                'capabilities_used': [cap for cap, enabled in self.capabilities.items() if enabled],
+                'enabled_capabilities': get_enabled_capabilities(self.config),
+                'available_agent_types': get_available_agent_type_names(self.config),
                 'config_source': 'agent_config.yaml'
             })
 
@@ -204,7 +219,8 @@ class AgentSession:
             'session_age_seconds': (datetime.now() - self.created_at).total_seconds(),
             'agent_count': len(self.agents),
             'available_agents': list(self.agents.keys()),
-            'enabled_capabilities': [cap for cap, enabled in self.capabilities.items() if enabled],
+            'enabled_capabilities': get_enabled_capabilities(self.config),
+            'available_agent_types': get_available_agent_type_names(self.config),
             'llm_provider': self.llm_service.get_current_provider() if self.llm_service else None,
             'config_source': 'agent_config.yaml',
             'redis_config': {
@@ -226,7 +242,10 @@ class AgentService:
         self.redis_config = get_config_section('redis', self.config)
         self.llm_config = get_config_section('llm', self.config)
         self.service_config = self.config.get('service', {})
+
+        # Use centralized capability checking
         self.capabilities = validate_agent_capabilities(self.config)
+        self.available_agent_types = get_available_agent_types(self.config)
 
         self.preferred_llm_provider = preferred_llm_provider or self.llm_config.get('preferred_provider', 'openai')
         self.sessions: Dict[str, AgentSession] = {}
@@ -332,7 +351,8 @@ class AgentService:
                 'timestamp': response.timestamp.isoformat(),
                 'processing_time': processing_time,
                 'message_count': session.message_count,
-                'capabilities': [cap for cap, enabled in session.capabilities.items() if enabled],
+                'enabled_capabilities': get_enabled_capabilities(self.config),
+                'available_agent_types': get_available_agent_type_names(self.config),
                 'config_source': 'agent_config.yaml'
             }
 
@@ -354,17 +374,15 @@ class AgentService:
         current_time = datetime.now()
         uptime = current_time - self.start_time
 
-        # Get available agent types from factory
-        available_types = AgentFactory.get_available_agent_types()
-
         return {
             'service_status': 'healthy',
             'uptime_seconds': uptime.total_seconds(),
             'active_sessions': len(self.sessions),
             'total_sessions_created': self.total_sessions_created,
             'total_messages_processed': self.total_messages_processed,
-            'available_agent_types': available_types,
-            'enabled_capabilities': [cap for cap, enabled in self.capabilities.items() if enabled],
+            'enabled_capabilities': get_enabled_capabilities(self.config),
+            'available_agent_types': self.available_agent_types,
+            'available_agent_type_names': get_available_agent_type_names(self.config),
             'config_source': 'agent_config.yaml',
             'configuration_summary': {
                 'redis_host': self.redis_config.get('host'),
@@ -382,7 +400,7 @@ class AgentService:
         health_status: dict[str, Any] = {
             'service_available': True,
             'timestamp': datetime.now().isoformat(),
-            'config_source': self.config
+            'config_source': 'agent_config.yaml'
         }
 
         try:
@@ -400,9 +418,10 @@ class AgentService:
                 health_status['llm_service_available'] = False
                 health_status['llm_error'] = str(e)
 
-            # Agent capabilities
-            health_status['available_agent_types'] = AgentFactory.get_available_agent_types()
-            health_status['enabled_capabilities'] = [cap for cap, enabled in self.capabilities.items() if enabled]
+            # Agent capabilities using centralized checking
+            health_status['enabled_capabilities'] = get_enabled_capabilities(self.config)
+            health_status['available_agent_types'] = self.available_agent_types
+            health_status['available_agent_type_names'] = get_available_agent_type_names(self.config)
 
             # Session health
             health_status.update({

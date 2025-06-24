@@ -188,7 +188,7 @@ aws:
   region: "us-east-1"
 
 # Media Processing Configuration
-media_processing:
+media_editor:
   # Docker Configuration
   docker_image: "sgosain/amb-ubuntu-python-public-pod"
   work_dir: "/opt/ambivo/work_dir"
@@ -196,7 +196,7 @@ media_processing:
   # File Handling
   input_dir: "./media_input"               # Input files directory
   output_dir: "./media_output"             # Output files directory
-  temp_dir: "/tmp/media_processing"        # Temporary files directory
+  temp_dir: "/tmp/media_editor"        # Temporary files directory
 
   # Processing Limits
   timeout: 300                             # Processing timeout (5 minutes)

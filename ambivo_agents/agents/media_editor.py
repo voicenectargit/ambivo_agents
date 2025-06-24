@@ -37,9 +37,9 @@ class MediaEditorAgent(BaseAgent):
         # Load media configuration from YAML
         try:
             config = load_config()
-            self.media_config = get_config_section('media_processing', config)
+            self.media_config = get_config_section('media_editor', config)
         except Exception as e:
-            raise ValueError(f"media_processing configuration not found in agent_config.yaml: {e}")
+            raise ValueError(f"media_editor configuration not found in agent_config.yaml: {e}")
 
         # Initialize media Docker executor
         self.media_executor = MediaDockerExecutor(self.media_config)

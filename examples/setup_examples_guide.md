@@ -77,7 +77,7 @@ web_scraping:
     User-Agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
 
 # Media Processing Configuration
-media_processing:
+media_editor:
   docker_image: "sgosain/amb-ubuntu-python-public-pod"
   timeout: 300
   memory_limit: "2g"
@@ -102,7 +102,7 @@ capabilities:
   web_scraping: true
   knowledge_base: true
   web_search: false  # Set to true if you have search API keys
-  media_processing: true
+  media_editor: true
   proxy: true
 ```
 

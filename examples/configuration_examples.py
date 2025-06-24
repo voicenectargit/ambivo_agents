@@ -39,7 +39,7 @@ def main():
         print(f"   Temperature: {llm_config.get('temperature')}")
 
         # Check optional sections
-        optional_sections = ['web_scraping', 'knowledge_base', 'web_search', 'media_processing']
+        optional_sections = ['web_scraping', 'knowledge_base', 'web_search', 'media_editor']
 
         print(f"\n📦 Optional Sections:")
         for section in optional_sections:

@@ -14,7 +14,13 @@ from typing import Dict, Any, Optional
 from ..core.base import AgentRole, BaseAgent, AgentMessage, MessageType
 from ..core.memory import MemoryManagerInterface
 from ..core.llm import LLMServiceInterface
-from ..config.loader import load_config, get_config_section, validate_agent_capabilities
+from ..config.loader import (
+    load_config,
+    get_config_section,
+    validate_agent_capabilities,
+    get_available_agent_types,
+    get_enabled_capabilities
+)
 
 from ..agents.assistant import AssistantAgent
 from ..agents.code_executor import CodeExecutorAgent
@@ -194,10 +200,10 @@ class AgentFactory:
             )
         elif role == AgentRole.RESEARCHER:
             # Import specialized agents dynamically based on configuration
-            capabilities = validate_agent_capabilities()
+            capabilities = validate_agent_capabilities(config)
 
             # PRIORITY ORDER: Knowledge Base > Web Search > Web Scraper > Media Editor
-            if capabilities.get('enable_knowledge_base', False):
+            if capabilities.get('knowledge_base', False):
                 try:
                     from ..agents.knowledge_base import KnowledgeBaseAgent
                     logging.info("Creating KnowledgeBaseAgent for RESEARCHER role")
@@ -210,7 +216,7 @@ class AgentFactory:
                 except Exception as e:
                     logging.error(f"Failed to create KnowledgeBaseAgent: {e}")
 
-            elif capabilities.get('enable_web_search', False):
+            elif capabilities.get('web_search', False):
                 try:
                     from ..agents.web_search import WebSearchAgent
                     logging.info("Creating WebSearchAgent for RESEARCHER role")
@@ -223,7 +229,7 @@ class AgentFactory:
                 except Exception as e:
                     logging.error(f"Failed to create WebSearchAgent: {e}")
 
-            elif capabilities.get('enable_web_scraping', False):
+            elif capabilities.get('web_scraping', False):
                 try:
                     from ..agents.web_scraper import WebScraperAgent
                     logging.info("Creating WebScraperAgent for RESEARCHER role")
@@ -236,7 +242,7 @@ class AgentFactory:
                 except Exception as e:
                     logging.error(f"Failed to create WebScraperAgent: {e}")
 
-            elif capabilities.get('enable_media_processing', False):
+            elif capabilities.get('media_editor', False):
                 try:
                     from ..agents.media_editor import MediaEditorAgent
                     logging.info("Creating MediaEditorAgent for RESEARCHER role")
@@ -273,31 +279,32 @@ class AgentFactory:
                                  agent_id: str,
                                  memory_manager: MemoryManagerInterface,
                                  llm_service: LLMServiceInterface = None,
+                                 config: Dict[str, Any] = None,
                                  **kwargs) -> BaseAgent:
         """Create specialized agents by type name"""
 
-        capabilities = validate_agent_capabilities()
+        capabilities = validate_agent_capabilities(config)
 
         if agent_type == "knowledge_base":
-            if not capabilities.get('enable_knowledge_base', False):
+            if not capabilities.get('knowledge_base', False):
                 raise ValueError("Knowledge base not enabled in agent_config.yaml")
             from ..agents.knowledge_base import KnowledgeBaseAgent
             return KnowledgeBaseAgent(agent_id, memory_manager, llm_service, **kwargs)
 
         elif agent_type == "web_scraper":
-            if not capabilities.get('enable_web_scraping', False):
+            if not capabilities.get('web_scraping', False):
                 raise ValueError("Web scraping not enabled in agent_config.yaml")
             from ..agents.web_scraper import WebScraperAgent
             return WebScraperAgent(agent_id, memory_manager, llm_service, **kwargs)
 
         elif agent_type == "web_search":
-            if not capabilities.get('enable_web_search', False):
+            if not capabilities.get('web_search', False):
                 raise ValueError("Web search not enabled in agent_config.yaml")
             from ..agents.web_search import WebSearchAgent
             return WebSearchAgent(agent_id, memory_manager, llm_service, **kwargs)
 
         elif agent_type == "media_editor":
-            if not capabilities.get('enable_media_processing', False):
+            if not capabilities.get('media_editor', False):
                 raise ValueError("Media processing not enabled in agent_config.yaml")
             from ..agents.media_editor import MediaEditorAgent
             return MediaEditorAgent(agent_id, memory_manager, llm_service, **kwargs)
@@ -306,27 +313,10 @@ class AgentFactory:
             raise ValueError(f"Unknown or unavailable agent type: {agent_type}")
 
     @staticmethod
-    def get_available_agent_types() -> Dict[str, bool]:
-        """Get available agent types based on configuration"""
-        try:
-            capabilities = validate_agent_capabilities()
-            return {
-                'assistant': True,
-                'code_executor': capabilities.get('enable_code_execution', False),
-                'proxy': True,
-                'knowledge_base': capabilities.get('enable_knowledge_base', False),
-                'web_scraper': capabilities.get('enable_web_scraping', False),
-                'web_search': capabilities.get('enable_web_search', False),
-                'media_editor': capabilities.get('enable_media_processing', False)
-            }
-        except Exception as e:
-            logging.error(f"Error getting available agent types: {e}")
-            return {
-                'assistant': True,
-                'code_executor': True,
-                'proxy': True,
-                'knowledge_base': False,
-                'web_scraper': False,
-                'web_search': False,
-                'media_editor': False
-            }
+    def get_available_agent_types(config: Dict[str, Any] = None) -> Dict[str, bool]:
+        """
+        Get available agent types based on configuration.
+
+        This now uses the centralized capability checking from loader.py
+        """
+        return get_available_agent_types(config)

@@ -50,31 +50,31 @@ class MediaAudioExtractionDemo:
             self.config = load_config()
 
             # Validate required sections exist
-            required_sections = ['media_processing', 'agent_capabilities']
+            required_sections = ['media_editor', 'agent_capabilities']
             for section in required_sections:
                 if section not in self.config:
                     raise ValueError(f"Missing required section '{section}' in agent_config.yaml")
 
             # Load media processing configuration
-            self.media_config = get_config_section('media_processing', self.config)
+            self.media_config = get_config_section('media_editor', self.config)
 
             # Validate required media processing settings
             required_media_settings = ['input_dir', 'output_dir', 'docker_image', 'timeout']
             for setting in required_media_settings:
                 if setting not in self.media_config:
-                    raise ValueError(f"Missing required setting 'media_processing.{setting}' in agent_config.yaml")
+                    raise ValueError(f"Missing required setting 'media_editor.{setting}' in agent_config.yaml")
 
             # Validate capabilities
             capabilities = self.config.get('agent_capabilities', {})
-            if not capabilities.get('enable_media_processing', False):
+            if not capabilities.get('enable_media_editor', False):
                 raise ValueError(
-                    "media_processing capability is not enabled in agent_config.yaml. Set capabilities.media_processing: true")
+                    "media_editor capability is not enabled in agent_config.yaml. Set capabilities.media_editor: true")
 
             print("✅ Configuration validated successfully")
 
         except FileNotFoundError:
             raise FileNotFoundError(
-                "agent_config.yaml not found. Please create the configuration file with required media_processing settings."
+                "agent_config.yaml not found. Please create the configuration file with required media_editor settings."
             )
         except Exception as e:
             raise RuntimeError(f"Configuration error: {e}")
@@ -104,7 +104,7 @@ class MediaAudioExtractionDemo:
             return True
         else:
             print("❌ Media Editor Agent is not available")
-            print("Please ensure media_processing is enabled in agent_config.yaml capabilities section")
+            print("Please ensure media_editor is enabled in agent_config.yaml capabilities section")
             raise RuntimeError("Media Editor Agent not available - check agent_config.yaml configuration")
 
     async def extract_audio_from_video(self, video_path: str, output_format: str = "mp3",
@@ -314,7 +314,7 @@ This will create a 10-second test video with a test pattern and a 1000Hz sine wa
 
         except Exception as e:
             print(f"\n❌ Demo failed with error: {e}")
-            print("💡 Check your agent_config.yaml file for proper media_processing configuration")
+            print("💡 Check your agent_config.yaml file for proper media_editor configuration")
             raise
 
     async def cleanup(self):
@@ -405,7 +405,7 @@ if __name__ == "__main__":
             return True
         else:
             print("❌ Media Editor Agent is not available")
-            print("Please ensure media_processing is enabled in agent_config.yaml")
+            print("Please ensure media_editor is enabled in agent_config.yaml")
             return False
 
 

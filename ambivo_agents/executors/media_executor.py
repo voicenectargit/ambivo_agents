@@ -28,7 +28,7 @@ class MediaDockerExecutor:
         if config is None:
             try:
                 full_config = load_config()
-                config = get_config_section('media_processing', full_config)
+                config = get_config_section('media_editor', full_config)
             except Exception:
                 config = {}
 

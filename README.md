@@ -138,7 +138,7 @@ web_search:
   avesapi_api_key: "your-aves-api-key"
 
 # Media Processing Configuration
-media_processing:
+media_editor:
   docker_image: "sgosain/amb-ubuntu-python-public-pod"
   timeout: 300
   memory_limit: "2g"
@@ -177,7 +177,7 @@ capabilities:
   web_scraping: true
   knowledge_base: true
   web_search: true
-  media_processing: true
+  media_editor: true
   proxy: true
 ```
 
