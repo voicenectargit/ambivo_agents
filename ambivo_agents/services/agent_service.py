@@ -75,7 +75,7 @@ class AgentSession:
         )
 
         # Code Executor Agent (if enabled)
-        if self.capabilities.get('code_execution', True):
+        if self.capabilities.get('enable_code_execution', False):
             executor_id = f"executor_{self.session_id}"
             executor_memory = create_redis_memory_manager(executor_id, self.redis_config)
 
@@ -98,7 +98,7 @@ class AgentSession:
         )
 
         # Proxy Agent (if enabled)
-        if self.capabilities.get('proxy', True):
+        if self.capabilities.get('enable_proxy_mode', True):
             proxy_id = f"proxy_{self.session_id}"
             proxy_memory = create_redis_memory_manager(proxy_id, self.redis_config)
 
@@ -377,12 +377,12 @@ class AgentService:
             'timestamp': current_time.isoformat()
         }
 
-    def health_check(self) -> Dict[str, Any]:
+    def health_check(self) -> dict[str, Any]:
         """Comprehensive health check"""
-        health_status = {
+        health_status: dict[str, Any] = {
             'service_available': True,
             'timestamp': datetime.now().isoformat(),
-            'config_source': 'agent_config.yaml'
+            'config_source': self.config
         }
 
         try:

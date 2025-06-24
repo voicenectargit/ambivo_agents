@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Dict, List, Any, Optional
 from datetime import datetime
 
+
 from ..core.base import BaseAgent, AgentRole, AgentMessage, MessageType, ExecutionContext, AgentTool
 from ..config.loader import load_config, get_config_section
 
@@ -78,10 +79,13 @@ class QdrantServiceAdapter:
 
             if not documents and doc_path:
                 # Load document from file
-                from langchain_community.document_loaders import UnstructuredFileLoader
+                #from langchain_community.document_loaders import UnstructuredFileLoader
+                from langchain_unstructured import UnstructuredLoader
+
                 from llama_index.core.readers import Document as LIDoc
 
-                loader = UnstructuredFileLoader(doc_path)
+                #loader = UnstructuredFileLoader(doc_path)
+                loader = UnstructuredLoader(doc_path)
                 lang_docs = loader.load()
                 documents = [LIDoc.from_langchain_format(doc) for doc in lang_docs]
 

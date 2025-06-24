@@ -52,6 +52,8 @@ def load_config(config_path: str = None) -> Dict[str, Any]:
         # Validate required sections
         _validate_config(config)
 
+        #print(f"====config/loader/load_config()Returning config Loaded configuration from {config}")
+
         return config
 
     except yaml.YAMLError as e:
