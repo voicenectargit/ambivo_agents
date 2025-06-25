@@ -146,7 +146,7 @@ def get_config_section(section: str, config: Dict[str, Any] = None) -> Dict[str,
     return config[section]
 
 
-# Centralized capability and agent type mapping
+# Centralized capability and agent type mapping - UPDATED WITH YOUTUBE
 CAPABILITY_TO_AGENT_TYPE = {
     'assistant': 'assistant',
     'code_execution': 'code_executor',
@@ -154,7 +154,8 @@ CAPABILITY_TO_AGENT_TYPE = {
     'web_scraping': 'web_scraper',
     'knowledge_base': 'knowledge_base',
     'web_search': 'web_search',
-    'media_editor': 'media_editor'
+    'media_editor': 'media_editor',
+    'youtube_download': 'youtube_download'  # NEW
 }
 
 CONFIG_FLAG_TO_CAPABILITY = {
@@ -162,6 +163,7 @@ CONFIG_FLAG_TO_CAPABILITY = {
     'enable_knowledge_base': 'knowledge_base',
     'enable_web_search': 'web_search',
     'enable_media_editor': 'media_editor',
+    'enable_youtube_download': 'youtube_download',  # NEW
     'enable_code_execution': 'code_execution',
     'enable_proxy_mode': 'proxy'
 }
@@ -213,6 +215,12 @@ def validate_agent_capabilities(config: Dict[str, Any] = None) -> Dict[str, bool
             'media_editor' in config
     )
 
+    # NEW: YouTube download capability
+    capabilities['youtube_download'] = (
+            agent_caps.get('enable_youtube_download', False) and
+            'youtube_download' in config
+    )
+
     return capabilities
 
 
@@ -249,7 +257,8 @@ def get_available_agent_types(config: Dict[str, Any] = None) -> Dict[str, bool]:
             'knowledge_base': False,
             'web_scraper': False,
             'web_search': False,
-            'media_editor': False
+            'media_editor': False,
+            'youtube_download': False  # NEW
         }
 
 

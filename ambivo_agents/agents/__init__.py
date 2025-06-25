@@ -5,6 +5,7 @@ from .knowledge_base import KnowledgeBaseAgent
 from .web_search import WebSearchAgent
 from .web_scraper import WebScraperAgent
 from .media_editor import MediaEditorAgent
+from .youtube_download import YouTubeDownloadAgent
 
 __all__ = [
     "AssistantAgent",
@@ -12,5 +13,7 @@ __all__ = [
     "KnowledgeBaseAgent",
     "WebSearchAgent",
     "WebScraperAgent",
-    "MediaEditorAgent"
+    "MediaEditorAgent",
+    "YouTubeDownloadAgent"
 ]
+

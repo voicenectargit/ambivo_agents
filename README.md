@@ -1,157 +1,190 @@
-# Ambivo Agents 🤖
+# Ambivo Agents - Multi-Agent AI System
 
-**A Comprehensive Multi-Agent System for AI-Powered Automation**
+A comprehensive toolkit for AI-powered automation including media processing, knowledge base operations, web scraping, YouTube downloads, and more.
 
-```
-Author: Hemant Gosain 'Sunny'
-Company: Ambivo
-Email: sgosain@ambivo.com
-License: MIT Open Source License
-Version: 1.2.0
-GitHub: https://github.com/yourusername/ambivo-agents
-Company: https://www.ambivo.com
-```
+## 🚀 Features
 
-## Overview
+### Core Capabilities
+- **Multi-Agent Architecture**: Specialized agents for different tasks with intelligent routing
+- **Docker-Based Execution**: Secure, isolated execution environment for code and media processing
+- **Redis Memory Management**: Persistent conversation memory with compression and caching
+- **Multi-Provider LLM Support**: Automatic failover between OpenAI, Anthropic, and AWS Bedrock
+- **Configuration-Driven**: All features controlled via `agent_config.yaml`
 
-Ambivo Agents is a powerful, production-ready multi-agent system that provides AI-powered automation capabilities including media processing, knowledge base operations, web scraping, code execution, and intelligent routing. Built with enterprise-grade features like Redis memory management, multi-LLM provider support, and Docker-based security.
+### Available Agents
 
-## 🚀 Key Features
+#### 🤖 Assistant Agent
+- General purpose conversational AI
+- Context-aware responses
+- Multi-turn conversations
 
-### 🎥 **Media Processing Agent**
-- Extract audio from video files using FFmpeg
-- Convert between audio/video formats (MP4, AVI, MP3, WAV, etc.)
-- Resize, trim, and process media files
-- Create thumbnails and extract frames
-- Adjust audio volume and levels
-- Merge audio/video files
+#### 💻 Code Executor Agent  
+- Secure Python and Bash execution in Docker
+- Isolated environment with resource limits
+- Real-time output streaming
 
-### 🧠 **Knowledge Base Agent** 
-- Ingest documents (PDF, DOCX, TXT) and text into Qdrant vector database
-- Intelligent document chunking and embedding
-- Semantic search and retrieval
-- Web content ingestion from URLs
-- Custom metadata support
-
-### 🕷️ **Web Scraping Agent**
-- Real-time web scraping with Playwright and requests
-- Proxy support for enterprise scraping
-- Docker-based secure execution
-- Rate limiting and error handling
-- Link and image extraction
-
-### 🔍 **Web Search Agent**
+#### 🔍 Web Search Agent
 - Multi-provider search (Brave, AVES APIs)
 - News and academic search capabilities
-- Automatic provider rotation
-- Rate limiting and quota management
+- Automatic provider failover
 
-### 🐍 **Code Execution Agent**
-- Secure Python and Bash execution in Docker containers
-- Isolated environment with memory limits
-- File handling and output capture
-- Error handling and timeout management
+#### 🕷️ Web Scraper Agent
+- Proxy-enabled scraping (ScraperAPI compatible)
+- Playwright and requests-based scraping
+- Batch URL processing with rate limiting
 
-### 🎯 **Intelligent Routing**
-- Automatic agent selection based on content analysis
-- Multi-turn conversation support
-- Context preservation across sessions
-- Message routing and delegation
+#### 📚 Knowledge Base Agent
+- Document ingestion (PDF, DOCX, TXT, web URLs)
+- Vector similarity search with Qdrant
+- Semantic question answering
+
+#### 🎥 Media Editor Agent
+- Audio/video processing with FFmpeg
+- Format conversion, resizing, trimming
+- Audio extraction and volume adjustment
+
+#### 🎬 YouTube Download Agent *(New!)*
+- Download videos and audio from YouTube
+- Docker-based execution with pytubefix
+- Automatic title sanitization and metadata extraction
 
 ## 📋 Prerequisites
 
-### Required Dependencies
+### Required
+- **Python 3.8+**
+- **Docker** (for code execution, media processing, YouTube downloads)
+- **Redis** (for memory management)
+
+### API Keys (Optional - based on enabled features)
+- **OpenAI API Key** (for GPT models)
+- **Anthropic API Key** (for Claude models)
+- **AWS Credentials** (for Bedrock models)
+- **Brave Search API Key** (for web search)
+- **AVES API Key** (for web search)
+- **ScraperAPI/Proxy credentials** (for web scraping)
+
+## 🛠️ Installation
+
+### 1. Install Dependencies
 ```bash
 # Core dependencies
-pip install redis docker-py
-pip install langchain langchain-openai langchain-anthropic langchain-aws
-pip install llama-index qdrant-client
+pip install redis python-dotenv pyyaml click
+
+# LLM providers (choose based on your needs)
+pip install openai anthropic boto3 langchain-openai langchain-anthropic langchain-aws
+
+# Knowledge base (if using)
+pip install qdrant-client llama-index langchain-unstructured
+
+# Web capabilities (if using)
 pip install requests beautifulsoup4 playwright
-pip install papaparse lz4 cachetools
 
-# Media processing
-pip install ffmpeg-python
+# Media processing (if using) 
+pip install docker
 
-# Optional: Install Playwright browsers
-playwright install
+# YouTube downloads (if using)
+pip install pytubefix pydantic
+
+# Optional: Install all at once
+pip install -r requirements.txt
 ```
 
-### System Requirements
-- **Docker**: Required for secure code execution and media processing
-- **Redis**: Required for memory management and session persistence
-- **FFmpeg**: Required for media processing (can be installed in Docker)
-- **Python 3.8+**: Required runtime
+### 2. Setup Docker Images
+```bash
+# Pull the multi-purpose container image
+docker pull sgosain/amb-ubuntu-python-public-pod
+```
 
-### External Services
-- **LLM Providers**: OpenAI, Anthropic, or AWS Bedrock API keys
-- **Search APIs**: Brave Search API, AVES API (optional)
-- **Vector Database**: Qdrant instance for knowledge base
-- **Proxy Services**: ScraperAPI or similar (optional)
+### 3. Setup Redis
+```bash
+# Using Docker
+docker run -d --name redis -p 6379:6379 redis:latest
+
+# Or install locally
+# sudo apt-get install redis-server  # Ubuntu/Debian
+# brew install redis                 # macOS
+```
 
 ## ⚙️ Configuration
 
 Create `agent_config.yaml` in your project root:
 
 ```yaml
-# Redis Configuration
+# Redis Configuration (Required)
 redis:
   host: "localhost"
   port: 6379
   db: 0
-  password: null
+  password: null  # Set if using Redis AUTH
 
-# LLM Configuration
+# LLM Configuration (Required - at least one provider)
 llm:
-  preferred_provider: "openai"
+  preferred_provider: "openai"  # openai, anthropic, or bedrock
   temperature: 0.7
-  openai_api_key: "your-openai-api-key"
-  anthropic_api_key: "your-anthropic-api-key"
+  
+  # Provider API Keys
+  openai_api_key: "your-openai-key"
+  anthropic_api_key: "your-anthropic-key"
+  
+  # AWS Bedrock (optional)
   aws_access_key_id: "your-aws-key"
   aws_secret_access_key: "your-aws-secret"
   aws_region: "us-east-1"
 
-# Knowledge Base Configuration
-knowledge_base:
-  qdrant_url: "http://localhost:6333"
-  qdrant_api_key: null
-  chunk_size: 1024
-  chunk_overlap: 20
-  similarity_top_k: 5
-  default_collection_prefix: "kb"
+# Agent Capabilities (Enable/disable features)
+agent_capabilities:
+  enable_web_search: true
+  enable_web_scraping: true  
+  enable_knowledge_base: true
+  enable_media_editor: true
+  enable_youtube_download: true
+  enable_code_execution: true
+  enable_proxy_mode: true
 
-# Web Scraping Configuration
-web_scraping:
-  proxy_enabled: false
-  proxy_config:
-    http_proxy: "http://username:password@proxy.example.com:8080"
-  docker_image: "sgosain/amb-ubuntu-python-public-pod"
-  timeout: 60
-  rate_limit_seconds: 1.0
-  max_links_per_page: 100
-  max_images_per_page: 50
-  default_headers:
-    User-Agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-
-# Web Search Configuration
+# Web Search Configuration (if enabled)
 web_search:
   brave_api_key: "your-brave-api-key"
   avesapi_api_key: "your-aves-api-key"
 
-# Media Processing Configuration
+# Web Scraping Configuration (if enabled)
+web_scraping:
+  proxy_enabled: true
+  proxy_config:
+    http_proxy: "http://scraperapi:your-key@proxy-server.scraperapi.com:8001"
+  default_headers:
+    User-Agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+  timeout: 60
+  max_links_per_page: 100
+
+# Knowledge Base Configuration (if enabled)
+knowledge_base:
+  qdrant_url: "http://localhost:6333"
+  qdrant_api_key: null  # Set if using Qdrant Cloud
+  chunk_size: 1024
+  chunk_overlap: 20
+  similarity_top_k: 5
+
+# Media Editor Configuration (if enabled)
 media_editor:
   docker_image: "sgosain/amb-ubuntu-python-public-pod"
+  input_dir: "./media_input"
+  output_dir: "./media_output" 
   timeout: 300
   memory_limit: "2g"
-  input_dir: "./media_input"
-  output_dir: "./media_output"
-  work_dir: "/opt/ambivo/work_dir"
+
+# YouTube Download Configuration (if enabled)
+youtube_download:
+  docker_image: "sgosain/amb-ubuntu-python-public-pod"
+  download_dir: "./youtube_downloads"
+  timeout: 600
+  memory_limit: "1g"
+  default_audio_only: true
 
 # Docker Configuration
 docker:
-  images: ["sgosain/amb-ubuntu-python-public-pod"]
   timeout: 60
   memory_limit: "512m"
-  work_dir: "/opt/ambivo/work_dir"
+  images: ["sgosain/amb-ubuntu-python-public-pod"]
 
 # Service Configuration
 service:
@@ -165,254 +198,241 @@ memory_management:
   compression:
     enabled: true
     algorithm: "lz4"
-    compression_level: 1
   cache:
     enabled: true
     max_size: 1000
     ttl_seconds: 300
-
-# Agent Capabilities
-capabilities:
-  code_execution: true
-  web_scraping: true
-  knowledge_base: true
-  web_search: true
-  media_editor: true
-  proxy: true
 ```
 
 ## 🚀 Quick Start
 
-### Basic Usage
+### Command Line Interface
+
+```bash
+# Install the CLI
+pip install ambivo-agents
+
+# Health check
+ambivo-agents health
+
+# Interactive chat mode
+ambivo-agents interactive
+
+# Single message
+ambivo-agents chat "Hello, how can you help me?"
+
+# Media processing
+ambivo-agents media extract-audio input.mp4 --output-format mp3
+
+# Knowledge base operations  
+ambivo-agents kb ingest-file document.pdf --kb-name my_docs
+
+# Web scraping
+ambivo-agents scrape url https://example.com --output results.json
+```
+
+### Python API
 
 ```python
-import asyncio
 from ambivo_agents.services import create_agent_service
+import asyncio
 
 async def main():
     # Create agent service
-    agent_service = create_agent_service()
+    service = create_agent_service()
     
     # Create session
-    session_id = agent_service.create_session()
+    session_id = service.create_session()
     
     # Process message
-    result = await agent_service.process_message(
-        message="Hello! Can you help me extract audio from a video file?",
+    result = await service.process_message(
+        message="Download the audio from https://youtube.com/watch?v=example",
         session_id=session_id,
         user_id="user123"
     )
     
-    print(f"Agent Response: {result['response']}")
+    print(result['response'])
 
-if __name__ == "__main__":
-    asyncio.run(main())
+# Run
+asyncio.run(main())
 ```
 
-### Health Check
+## 📖 Usage Examples
 
-```python
-from ambivo_agents.services import create_agent_service
-
-# Check system health
-agent_service = create_agent_service()
-health = agent_service.health_check()
-
-print(f"System Status: {health['service_available']}")
-print(f"Redis: {health['redis_available']}")
-print(f"LLM: {health['llm_service_available']}")
-print(f"Available Agents: {health['available_agent_types']}")
-```
-
-## 📖 Detailed Examples
-
-### 1. Media Audio Extraction
-See `examples/media_audio_extraction.py` for complete working example.
-
-### 2. Knowledge Base Operations  
-See `examples/knowledge_base_operations.py` for text ingestion and querying.
-
-### 3. Web Scraping Apartments.com
-See `examples/apartments_scraping.py` for real estate data extraction.
-
-## 🏗️ Architecture
-
-```
-ambivo_agents/
-├── agents/           # Specialized agent implementations
-│   ├── assistant.py      # General purpose assistant
-│   ├── code_executor.py  # Code execution agent
-│   ├── knowledge_base.py # Knowledge base operations
-│   ├── media_editor.py   # Media processing agent
-│   ├── web_scraper.py    # Web scraping agent
-│   └── web_search.py     # Web search agent
-├── core/             # Core framework components
-│   ├── base.py          # Base classes and interfaces
-│   ├── memory.py        # Redis memory management
-│   └── llm.py           # Multi-provider LLM service
-├── services/         # Service layer
-│   ├── agent_service.py # Main service orchestrator
-│   └── factory.py       # Agent factory and routing
-├── executors/        # Execution engines
-│   ├── docker_executor.py  # Docker code execution
-│   └── media_executor.py   # FFmpeg media processing
-└── config/           # Configuration management
-    └── loader.py        # YAML configuration loader
-```
-
-## 🔧 Agent Types
-
-| Agent Type | Purpose | Key Capabilities |
-|------------|---------|------------------|
-| **Assistant** | General conversation | Chat, Q&A, general assistance |
-| **Code Executor** | Code execution | Python/Bash in Docker containers |
-| **Knowledge Base** | Document operations | Ingest, search, retrieve documents |
-| **Media Editor** | Media processing | Audio/video conversion, extraction |
-| **Web Scraper** | Web data extraction | Scrape websites with proxy support |
-| **Web Search** | Information retrieval | Search web, news, academic content |
-| **Proxy** | Intelligent routing | Route messages to appropriate agents |
-
-## 🛡️ Security Features
-
-- **Docker Isolation**: All code execution in secure containers
-- **Memory Limits**: Prevent resource exhaustion
-- **Network Isolation**: Containers run without network access
-- **Input Sanitization**: Safe handling of user inputs
-- **Rate Limiting**: Prevent API abuse
-- **Error Handling**: Graceful failure management
-
-## 📊 Monitoring & Analytics
-
-```python
-# Get service statistics
-stats = agent_service.get_service_stats()
-print(f"Active Sessions: {stats['active_sessions']}")
-print(f"Messages Processed: {stats['total_messages_processed']}")
-print(f"Uptime: {stats['uptime_seconds']} seconds")
-
-# Get session information
-session_info = agent_service.get_session_info(session_id)
-print(f"Message Count: {session_info['message_count']}")
-print(f"Agent Types: {session_info['available_agents']}")
-```
-
-## 🔄 Multi-Provider LLM Support
-
-The system automatically rotates between configured LLM providers:
-
-- **OpenAI**: GPT-4, GPT-3.5-turbo
-- **Anthropic**: Claude-3.5-Sonnet
-- **AWS Bedrock**: Cohere Command, Titan
-
-Provider rotation handles:
-- Rate limiting and quota management
-- Error recovery and fallback
-- Performance optimization
-- Cost management
-
-## 🚨 Error Handling
-
-```python
-try:
-    result = await agent_service.process_message(
-        message="Process this data",
-        session_id=session_id,
-        user_id="user123"
-    )
-    
-    if result['success']:
-        print(f"Success: {result['response']}")
-    else:
-        print(f"Error: {result['error']}")
-        
-except Exception as e:
-    print(f"System Error: {e}")
-```
-
-## 📝 Best Practices
-
-### Session Management
-- Use meaningful session IDs for tracking
-- Clean up expired sessions regularly
-- Monitor session memory usage
-
-### Memory Management
-- Use conversation IDs for context isolation
-- Enable compression for large data
-- Configure appropriate cache sizes
-
-### Agent Selection
-- Let the proxy agent handle routing automatically
-- Use specific agents for specialized tasks
-- Monitor agent performance metrics
-
-### Resource Management
-- Set appropriate Docker memory limits
-- Configure reasonable timeouts
-- Monitor Redis memory usage
-
-## 🧪 Testing
-
-Run the comprehensive test suite:
-
+### YouTube Downloads
 ```bash
-# Run specific examples
-python examples/media_audio_extraction.py
-python examples/knowledge_base_operations.py
-python examples/apartments_scraping.py
+# Download audio from YouTube
+ambivo-agents chat "Download audio from https://youtube.com/watch?v=dQw4w9WgXcQ"
 
-# Run full system test
-python examples/comprehensive_example.py
+# Download video 
+ambivo-agents chat "Download video from https://youtube.com/watch?v=dQw4w9WgXcQ in highest quality"
 ```
+
+### Media Processing
+```bash
+# Extract audio from video
+ambivo-agents chat "Extract audio from /path/to/video.mp4 as high quality mp3"
+
+# Convert video format
+ambivo-agents chat "Convert /path/to/video.avi to mp4 with h264 codec"
+
+# Create thumbnail
+ambivo-agents chat "Create thumbnail from /path/to/video.mp4 at 00:05:00"
+```
+
+### Knowledge Base Operations
+```bash
+# Ingest documents
+ambivo-agents chat "Ingest document /path/to/manual.pdf into knowledge base 'company_docs'"
+
+# Query knowledge base
+ambivo-agents chat "Query knowledge base 'company_docs': What is the return policy?"
+```
+
+### Web Search & Scraping
+```bash
+# Web search
+ambivo-agents chat "search for latest AI trends 2024"
+
+# Web scraping
+ambivo-agents chat "scrape https://example.com and extract all links"
+```
+
+### Code Execution
+```bash
+# Python code
+ambivo-agents chat "```python\nprint('Hello World')\nimport math\nprint(math.pi)\n```"
+
+# Bash commands  
+ambivo-agents chat "```bash\nls -la\ndf -h\n```"
+```
+
+## 🔧 Architecture
+
+### Agent Routing
+The system uses a **Proxy Agent** that intelligently routes messages to specialized agents based on content analysis:
+
+- **YouTube keywords** → YouTube Download Agent
+- **Media keywords** → Media Editor Agent  
+- **Search keywords** → Web Search Agent
+- **Scraping keywords** → Web Scraper Agent
+- **Knowledge keywords** → Knowledge Base Agent
+- **Code blocks** → Code Executor Agent
+- **General queries** → Assistant Agent
+
+### Memory System
+- **Redis-based persistence** with compression and caching
+- **Conversation-aware context** with TTL management
+- **Multi-session support** with automatic cleanup
+
+### LLM Provider Management
+- **Automatic failover** between OpenAI, Anthropic, AWS Bedrock
+- **Rate limiting** and error handling
+- **Provider rotation** based on availability and performance
+
+## 🐳 Docker Setup
+
+### Custom Docker Image
+If you need additional dependencies, extend the base image:
+
+```dockerfile
+FROM sgosain/amb-ubuntu-python-public-pod
+
+# Install additional packages
+RUN pip install your-additional-packages
+
+# Add custom scripts
+COPY your-scripts/ /opt/scripts/
+```
+
+### Volume Mounting
+The agents automatically handle volume mounting for:
+- Media input/output directories
+- YouTube download directories  
+- Code execution workspaces
+
+## 🔍 Troubleshooting
+
+### Common Issues
+
+1. **Redis Connection Failed**
+   ```bash
+   # Check Redis is running
+   redis-cli ping
+   # Should return "PONG"
+   ```
+
+2. **Docker Not Available**
+   ```bash
+   # Check Docker is running
+   docker ps
+   # Install if missing: https://docs.docker.com/get-docker/
+   ```
+
+3. **Agent Not Found Errors**
+   - Verify the feature is enabled in `agent_capabilities`
+   - Check that required configuration sections exist
+   - Ensure API keys are properly set
+
+4. **Module Import Errors**
+   ```bash
+   # Install missing dependencies
+   pip install missing-package
+   ```
+
+### Debug Mode
+Enable verbose logging:
+```yaml
+service:
+  log_level: "DEBUG"
+  log_to_file: true
+```
+
+## 🔐 Security Considerations
+
+- **Docker Isolation**: All code execution happens in isolated containers
+- **Network Restrictions**: Containers run with `network_disabled=True` by default
+- **Resource Limits**: Memory and CPU limits prevent resource exhaustion  
+- **API Key Management**: Store sensitive keys in environment variables
+- **Input Sanitization**: All user inputs are validated and sanitized
 
 ## 🤝 Contributing
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests for new functionality
-5. Submit a pull request
+We welcome contributions! Please see our [Contributing Guidelines](CONTRIBUTING.md) for details.
+
+### Development Setup
+```bash
+# Clone repository
+git clone https://github.com/ambivo/ambivo-agents.git
+cd ambivo-agents
+
+# Install in development mode
+pip install -e .
+
+# Run tests
+pytest tests/
+
+# Type checking
+mypy ambivo_agents/
+```
 
 ## 📄 License
 
-```
-MIT License
+MIT License - see [LICENSE](LICENSE) file for details.
 
-Copyright (c) 2025 Hemant Gosain / Ambivo
+## 👨‍💻 Author
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+**Hemant Gosain 'Sunny'**
+- Company: [Ambivo](https://www.ambivo.com)
+- Email: sgosain@ambivo.com
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+## 🆘 Support
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```
-
-## 📞 Support
-
-- **Email**: sgosain@ambivo.com
-- **Company**: https://www.ambivo.com
-- **Documentation**: Coming soon
-- **Issues**: GitHub Issues
-
-## 🗺️ Roadmap
-
-- [ ] Advanced media processing capabilities
-- [ ] Enhanced knowledge base features
-- [ ] Additional LLM provider support
-- [ ] Advanced analytics and reporting
+- 📧 Email: sgosain@ambivo.com
+- 🌐 Website: https://www.ambivo.com
+- 📖 Documentation: [Coming Soon]
+- 🐛 Issues: [GitHub Issues](https://github.com/ambivo/ambivo-agents/issues)
 
 ---
 
-**Built with 🛡️ by by the Ambivo Team***
+*Built with 🛡 by the Ambivo team*

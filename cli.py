@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Ambivo Agents CLI Interface
+Ambivo Agents CLI Interface - Updated with YouTube Download Support
 
 Author: Hemant Gosain 'Sunny'
 Company: Ambivo
@@ -57,7 +57,7 @@ cli_instance = AmbivoAgentsCLI()
 
 
 @click.group()
-@click.version_option(version="1.2.0", prog_name="Ambivo Agents")
+@click.version_option(version="1.3.0", prog_name="Ambivo Agents")
 @click.option('--config', '-c', help='Configuration file path')
 @click.option('--verbose', '-v', is_flag=True, help='Enable verbose output')
 def cli(config: Optional[str], verbose: bool):
@@ -65,16 +65,18 @@ def cli(config: Optional[str], verbose: bool):
     Ambivo Agents - Multi-Agent AI System CLI
 
     A comprehensive toolkit for AI-powered automation including
-    media processing, knowledge base operations, web scraping, and more.
+    media processing, knowledge base operations, web scraping,
+    YouTube downloads, and more.
 
     Author: Hemant Gosain 'Sunny'
     Company: Ambivo
     Email: sgosain@ambivo.com
     """
     if verbose:
-        click.echo("🤖 Ambivo Agents CLI v1.2.0")
+        click.echo("🤖 Ambivo Agents CLI v1.3.0")
         click.echo("📧 Contact: sgosain@ambivo.com")
         click.echo("🏢 Company: https://www.ambivo.com")
+        click.echo("🎬 NEW: YouTube Download Support")
 
     if config:
         click.echo(f"📋 Using config file: {config}")
@@ -171,6 +173,38 @@ Use the extract_audio_from_video tool to process this file."""
     asyncio.run(process())
 
 
+@media.command()
+@click.argument('input_file')
+@click.option('--output-format', '-f', default='mp4', type=click.Choice(['mp4', 'avi', 'mov', 'mkv']),
+              help='Output format')
+@click.option('--codec', '-c', default='h264', type=click.Choice(['h264', 'h265', 'vp9']), help='Video codec')
+def convert_video(input_file: str, output_format: str, codec: str):
+    """Convert video to different format"""
+    if not Path(input_file).exists():
+        click.echo(f"❌ File not found: {input_file}", err=True)
+        sys.exit(1)
+
+    click.echo(f"🎥 Converting video: {input_file}")
+
+    message = f"""Convert the video file at path: {input_file}
+
+Please use the following settings:
+- Output format: {output_format}
+- Video codec: {codec}
+
+Use the convert_video_format tool to process this file."""
+
+    async def process():
+        result = await cli_instance.process_message(message, "media_convert")
+
+        if result['success']:
+            click.echo(f"✅ {result['response']}")
+        else:
+            click.echo(f"❌ Error: {result['error']}", err=True)
+
+    asyncio.run(process())
+
+
 @cli.group()
 def kb():
     """Knowledge base commands"""
@@ -194,6 +228,28 @@ Please use the ingest_document tool to process this file into the knowledge base
 
     async def process():
         result = await cli_instance.process_message(message, "kb_ingest")
+
+        if result['success']:
+            click.echo(f"✅ {result['response']}")
+        else:
+            click.echo(f"❌ Error: {result['error']}", err=True)
+
+    asyncio.run(process())
+
+
+@kb.command()
+@click.argument('query')
+@click.option('--kb-name', '-k', default='default_kb', help='Knowledge base name')
+def query(query: str, kb_name: str):
+    """Query a knowledge base"""
+    click.echo(f"🔍 Querying {kb_name}: {query}")
+
+    message = f"""Query the knowledge base "{kb_name}" with this question: {query}
+
+Please use the query_knowledge_base tool to find relevant information."""
+
+    async def process():
+        result = await cli_instance.process_message(message, "kb_query")
 
         if result['success']:
             click.echo(f"✅ {result['response']}")
@@ -249,6 +305,179 @@ Use the scrape_url tool to fetch this content."""
     asyncio.run(process())
 
 
+@scrape.command()
+@click.argument('urls', nargs=-1, required=True)
+@click.option('--output-dir', '-o', default='./scraped_content', help='Output directory')
+def batch(urls, output_dir: str):
+    """Batch scrape multiple URLs"""
+    click.echo(f"📦 Batch scraping {len(urls)} URLs")
+
+    url_list = " ".join(urls)
+    message = f"""Batch scrape these URLs: {url_list}
+
+Please extract content from all URLs and provide a summary."""
+
+    async def process():
+        result = await cli_instance.process_message(message, "scrape_batch")
+
+        if result['success']:
+            output_path = Path(output_dir)
+            output_path.mkdir(exist_ok=True)
+
+            output_file = output_path / f"batch_scrape_{int(time.time())}.json"
+            response_data = {
+                'urls': list(urls),
+                'scraped_at': datetime.now().isoformat(),
+                'results': result['response']
+            }
+
+            with open(output_file, 'w', encoding='utf-8') as f:
+                json.dump(response_data, f, indent=2)
+
+            click.echo(f"✅ {result['response']}")
+            click.echo(f"💾 Saved to: {output_file}")
+        else:
+            click.echo(f"❌ Error: {result['error']}", err=True)
+
+    asyncio.run(process())
+
+
+@cli.group()
+def youtube():
+    """YouTube download commands"""
+    pass
+
+
+@youtube.command()
+@click.argument('url')
+@click.option('--audio-only', '-a', is_flag=True, default=True, help='Download audio only (default)')
+@click.option('--video', '-v', is_flag=True, help='Download video (overrides --audio-only)')
+@click.option('--output-name', '-n', help='Custom output filename (without extension)')
+def download(url: str, audio_only: bool, video: bool, output_name: Optional[str]):
+    """Download video or audio from YouTube"""
+
+    # If --video flag is used, override audio_only
+    if video:
+        audio_only = False
+
+    content_type = "video" if not audio_only else "audio"
+    click.echo(f"🎬 Downloading {content_type} from: {url}")
+
+    if output_name:
+        message = f"""Download {'audio' if audio_only else 'video'} from {url} with custom filename "{output_name}" """
+    else:
+        message = f"""Download {'audio' if audio_only else 'video'} from {url}"""
+
+    async def process():
+        result = await cli_instance.process_message(message, "youtube_download")
+
+        if result['success']:
+            click.echo(f"✅ {result['response']}")
+        else:
+            click.echo(f"❌ Error: {result['error']}", err=True)
+
+    asyncio.run(process())
+
+
+@youtube.command()
+@click.argument('url')
+def info(url: str):
+    """Get information about a YouTube video"""
+    click.echo(f"📹 Getting video info: {url}")
+
+    message = f"""Get information about this YouTube video: {url}
+
+Please provide details like title, duration, views, and available streams."""
+
+    async def process():
+        result = await cli_instance.process_message(message, "youtube_info")
+
+        if result['success']:
+            click.echo(result['response'])
+        else:
+            click.echo(f"❌ Error: {result['error']}", err=True)
+
+    asyncio.run(process())
+
+
+@youtube.command()
+@click.argument('urls', nargs=-1, required=True)
+@click.option('--audio-only', '-a', is_flag=True, default=True, help='Download audio only (default)')
+@click.option('--video', '-v', is_flag=True, help='Download video (overrides --audio-only)')
+def batch(urls, audio_only: bool, video: bool):
+    """Batch download multiple YouTube videos"""
+
+    # If --video flag is used, override audio_only
+    if video:
+        audio_only = False
+
+    content_type = "video" if not audio_only else "audio"
+    click.echo(f"📦 Batch downloading {content_type} from {len(urls)} URLs")
+
+    url_list = " ".join(urls)
+    message = f"""Batch download {'audio' if audio_only else 'video'} from these YouTube URLs: {url_list}"""
+
+    async def process():
+        result = await cli_instance.process_message(message, "youtube_batch")
+
+        if result['success']:
+            click.echo(f"✅ {result['response']}")
+        else:
+            click.echo(f"❌ Error: {result['error']}", err=True)
+
+    asyncio.run(process())
+
+
+@cli.group()
+def search():
+    """Web search commands"""
+    pass
+
+
+@search.command()
+@click.argument('query')
+@click.option('--max-results', '-n', default=5, help='Maximum number of results')
+def web(query: str, max_results: int):
+    """Search the web"""
+    click.echo(f"🔍 Searching: {query}")
+
+    message = f"""Search the web for: {query}
+
+Please find the top {max_results} most relevant results."""
+
+    async def process():
+        result = await cli_instance.process_message(message, "web_search")
+
+        if result['success']:
+            click.echo(f"✅ {result['response']}")
+        else:
+            click.echo(f"❌ Error: {result['error']}", err=True)
+
+    asyncio.run(process())
+
+
+@search.command()
+@click.argument('query')
+@click.option('--max-results', '-n', default=5, help='Maximum number of results')
+def news(query: str, max_results: int):
+    """Search for news"""
+    click.echo(f"📰 Searching news: {query}")
+
+    message = f"""Search for recent news about: {query}
+
+Please find the top {max_results} most recent and relevant news articles."""
+
+    async def process():
+        result = await cli_instance.process_message(message, "news_search")
+
+        if result['success']:
+            click.echo(f"✅ {result['response']}")
+        else:
+            click.echo(f"❌ Error: {result['error']}", err=True)
+
+    asyncio.run(process())
+
+
 @cli.command()
 def interactive():
     """Start interactive chat mode"""
@@ -269,12 +498,50 @@ def interactive():
                     break
                 elif user_input.lower() == 'help':
                     click.echo("""
-Available commands:
+🤖 Available Commands & Examples:
+
+📝 General:
 - Ask any question or give instructions
+- 'what is artificial intelligence?'
+- 'explain quantum computing'
+
+🎥 Media Processing:
 - 'extract audio from /path/to/video.mp4'
+- 'convert /path/to/video.avi to mp4'
+- 'resize video /path/to/video.mp4 to 720p'
+
+📚 Knowledge Base:
 - 'ingest document /path/to/doc.pdf into knowledge base'
-- 'query knowledge base: what is...'
+- 'query knowledge base: what is our return policy?'
+- 'search documents for machine learning'
+
+🕷️ Web Scraping:
 - 'scrape https://example.com'
+- 'extract content from https://news.site.com'
+
+🎬 YouTube Downloads:
+- 'download audio from https://youtube.com/watch?v=example'
+- 'download video from https://youtube.com/watch?v=example'
+- 'get info about https://youtube.com/watch?v=example'
+- 'download https://youtube.com/watch?v=url1 and https://youtube.com/watch?v=url2'
+
+🔍 Web Search:
+- 'search for latest AI trends 2024'
+- 'find news about space exploration'
+- 'search web for Python tutorials'
+
+💻 Code Execution:
+- ```python
+  print('Hello World')
+  import math
+  print(math.pi)
+  ```
+- ```bash
+  ls -la
+  df -h
+  ```
+
+🚪 Exit:
 - 'quit' or 'exit' to leave
                     """)
                     continue
@@ -294,6 +561,98 @@ Available commands:
                 break
 
     asyncio.run(interactive_loop())
+
+
+@cli.command()
+def demo():
+    """Run a demo showcasing various capabilities"""
+    click.echo("🎪 Ambivo Agents Demo")
+    click.echo("=" * 50)
+
+    demos = [
+        ("💬 General Chat", "Hello! What can you help me with today?"),
+        ("🔍 Web Search", "search for latest developments in artificial intelligence"),
+        ("📊 Knowledge", "What are the key principles of machine learning?"),
+        ("💻 Code",
+         "```python\nprint('Demo: Hello from Python!')\nimport datetime\nprint(f'Current time: {datetime.datetime.now()}')\n```"),
+    ]
+
+    async def run_demos():
+        conversation_id = "demo_session"
+
+        for title, demo_message in demos:
+            click.echo(f"\n{title}")
+            click.echo("-" * 30)
+            click.echo(f"Input: {demo_message}")
+
+            try:
+                result = await cli_instance.process_message(demo_message, conversation_id)
+
+                if result['success']:
+                    # Truncate long responses for demo
+                    response = result['response']
+                    if len(response) > 200:
+                        response = response[:200] + "..."
+
+                    click.echo(f"Output: {response}")
+                    click.echo(f"Agent: {result.get('agent_id', 'unknown')}")
+                    click.echo(f"Time: {result.get('processing_time', 0):.2f}s")
+                else:
+                    click.echo(f"Error: {result.get('error', 'Unknown error')}")
+
+            except Exception as e:
+                click.echo(f"Demo error: {e}")
+
+            # Pause between demos
+            time.sleep(1)
+
+    asyncio.run(run_demos())
+
+    click.echo(f"\n🎉 Demo completed! Try 'ambivo-agents interactive' for hands-on experience.")
+
+
+@cli.command()
+def examples():
+    """Show usage examples for different features"""
+    click.echo("📚 Ambivo Agents - Usage Examples")
+    click.echo("=" * 50)
+
+    examples = {
+        "🎬 YouTube Downloads": [
+            "ambivo-agents youtube download 'https://youtube.com/watch?v=dQw4w9WgXcQ'",
+            "ambivo-agents youtube download 'https://youtube.com/watch?v=dQw4w9WgXcQ' --video",
+            "ambivo-agents youtube info 'https://youtube.com/watch?v=dQw4w9WgXcQ'",
+            "ambivo-agents youtube batch 'url1' 'url2' 'url3' --audio-only"
+        ],
+        "🎵 Media Processing": [
+            "ambivo-agents media extract-audio video.mp4 -f mp3 -q high",
+            "ambivo-agents media convert-video video.avi -f mp4 -c h264",
+        ],
+        "📚 Knowledge Base": [
+            "ambivo-agents kb ingest-file document.pdf -k company_docs",
+            "ambivo-agents kb query 'what is our return policy?' -k company_docs",
+        ],
+        "🕷️ Web Scraping": [
+            "ambivo-agents scrape url https://example.com -o scraped_data.json",
+            "ambivo-agents scrape batch 'url1' 'url2' 'url3' -o ./scraped/",
+        ],
+        "🔍 Web Search": [
+            "ambivo-agents search web 'artificial intelligence trends 2024' -n 10",
+            "ambivo-agents search news 'space exploration' -n 5",
+        ],
+        "💬 Interactive Chat": [
+            "ambivo-agents interactive",
+            "ambivo-agents chat 'Hello, how can you help me?'",
+        ]
+    }
+
+    for category, example_list in examples.items():
+        click.echo(f"\n{category}")
+        click.echo("-" * 30)
+        for example in example_list:
+            click.echo(f"  {example}")
+
+    click.echo(f"\n💡 Tip: Use 'ambivo-agents [command] --help' for detailed options")
 
 
 if __name__ == '__main__':

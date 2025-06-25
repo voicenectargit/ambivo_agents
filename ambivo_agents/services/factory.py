@@ -1,6 +1,6 @@
 # ambivo_agents/services/factory.py
 """
-Agent Factory for creating different types of agents - FIXED VERSION
+Agent Factory for creating different types of agents - UPDATED WITH YOUTUBE SUPPORT
 
 Author: Hemant Gosain 'Sunny'
 Company: Ambivo
@@ -27,7 +27,7 @@ from ..agents.code_executor import CodeExecutorAgent
 
 
 class ProxyAgent(BaseAgent):
-    """Agent that routes messages to appropriate specialized agents - FIXED VERSION"""
+    """Agent that routes messages to appropriate specialized agents - UPDATED WITH YOUTUBE SUPPORT"""
 
     def __init__(self, agent_id: str, memory_manager, llm_service=None, **kwargs):
         super().__init__(
@@ -64,17 +64,31 @@ class ProxyAgent(BaseAgent):
         return False
 
     async def process_message(self, message, context):
-        """Route messages to appropriate agents based on content analysis - FIXED"""
+        """Route messages to appropriate agents based on content analysis - UPDATED WITH YOUTUBE"""
         self.memory.store_message(message)
 
         try:
             content = message.content.lower()
 
-            # Improved routing logic with more specific patterns
+            # Improved routing logic with YouTube support
             target_agent = None
 
-            # Web search routing (HIGHEST PRIORITY for web search requests)
+            # YouTube download routing (HIGHEST PRIORITY for YouTube URLs)
             if any(keyword in content for keyword in [
+                'youtube.com', 'youtu.be', 'download youtube', 'youtube download',
+                'download video', 'download audio', 'youtube mp3', 'youtube mp4',
+                'download from youtube'
+            ]) or 'youtube' in content:
+                # Look for YouTubeDownloadAgent by class name or agent key
+                for agent_key, agent in self.agent_registry.items():
+                    if ('YouTubeDownloadAgent' in agent.__class__.__name__ or
+                            'youtube_download' in agent_key or
+                            'youtube' in agent_key):
+                        target_agent = agent
+                        break
+
+            # Web search routing (HIGH PRIORITY for web search requests)
+            elif any(keyword in content for keyword in [
                 'search web', 'web search', 'find online', 'search_web',
                 'brave search', 'aves search', 'search the web', 'search for'
             ]):
@@ -100,6 +114,20 @@ class ProxyAgent(BaseAgent):
                         target_agent = agent
                         break
 
+            # Media processing routing (for FFmpeg operations)
+            elif any(keyword in content for keyword in [
+                'extract_audio', 'convert_video', 'media', 'ffmpeg', 'audio', 'video',
+                'mp4', 'mp3', 'wav', 'extract audio', 'resize video', 'trim video',
+                'video format', 'audio format'
+            ]):
+                # Look for MediaEditorAgent
+                for agent_key, agent in self.agent_registry.items():
+                    if ('MediaEditorAgent' in agent.__class__.__name__ or
+                            'media_editor' in agent_key or
+                            'mediaeditor' in agent_key):
+                        target_agent = agent
+                        break
+
             # Code execution routing
             elif any(keyword in content for keyword in [
                 'execute', 'run code', 'python', 'bash', '```python', '```bash',
@@ -121,19 +149,6 @@ class ProxyAgent(BaseAgent):
                     if ('WebScraperAgent' in agent.__class__.__name__ or
                             'web_scraper' in agent_key or
                             'webscraper' in agent_key):
-                        target_agent = agent
-                        break
-
-            # Media processing routing
-            elif any(keyword in content for keyword in [
-                'extract_audio', 'convert_video', 'media', 'ffmpeg', 'audio', 'video',
-                'mp4', 'mp3', 'wav', 'extract audio'
-            ]):
-                # Look for MediaEditorAgent
-                for agent_key, agent in self.agent_registry.items():
-                    if ('MediaEditorAgent' in agent.__class__.__name__ or
-                            'media_editor' in agent_key or
-                            'mediaeditor' in agent_key):
                         target_agent = agent
                         break
 
@@ -183,7 +198,7 @@ class ProxyAgent(BaseAgent):
 
 
 class AgentFactory:
-    """Factory for creating different types of agents"""
+    """Factory for creating different types of agents - UPDATED WITH YOUTUBE SUPPORT"""
 
     @staticmethod
     def create_agent(role: AgentRole,
@@ -212,7 +227,7 @@ class AgentFactory:
             # Import specialized agents dynamically based on configuration
             capabilities = validate_agent_capabilities(config)
 
-            # PRIORITY ORDER: Knowledge Base > Web Search > Web Scraper > Media Editor
+            # PRIORITY ORDER: Knowledge Base > Web Search > YouTube > Web Scraper > Media Editor
             if capabilities.get('knowledge_base', False):
                 try:
                     from ..agents.knowledge_base import KnowledgeBaseAgent
@@ -238,6 +253,19 @@ class AgentFactory:
                     )
                 except Exception as e:
                     logging.error(f"Failed to create WebSearchAgent: {e}")
+
+            elif capabilities.get('youtube_download', False):
+                try:
+                    from ..agents.youtube_download import YouTubeDownloadAgent
+                    logging.info("Creating YouTubeDownloadAgent for RESEARCHER role")
+                    return YouTubeDownloadAgent(
+                        agent_id=agent_id,
+                        memory_manager=memory_manager,
+                        llm_service=llm_service,
+                        **kwargs
+                    )
+                except Exception as e:
+                    logging.error(f"Failed to create YouTubeDownloadAgent: {e}")
 
             elif capabilities.get('web_scraping', False):
                 try:
@@ -291,7 +319,7 @@ class AgentFactory:
                                  llm_service: LLMServiceInterface = None,
                                  config: Dict[str, Any] = None,
                                  **kwargs) -> BaseAgent:
-        """Create specialized agents by type name"""
+        """Create specialized agents by type name - UPDATED WITH YOUTUBE SUPPORT"""
 
         capabilities = validate_agent_capabilities(config)
 
@@ -318,6 +346,12 @@ class AgentFactory:
                 raise ValueError("Media editor not enabled in agent_config.yaml")
             from ..agents.media_editor import MediaEditorAgent
             return MediaEditorAgent(agent_id, memory_manager, llm_service, **kwargs)
+
+        elif agent_type == "youtube_download":  # NEW
+            if not capabilities.get('youtube_download', False):
+                raise ValueError("YouTube download not enabled in agent_config.yaml")
+            from ..agents.youtube_download import YouTubeDownloadAgent
+            return YouTubeDownloadAgent(agent_id, memory_manager, llm_service, **kwargs)
 
         else:
             raise ValueError(f"Unknown or unavailable agent type: {agent_type}")

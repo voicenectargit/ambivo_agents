@@ -1,6 +1,6 @@
 # ambivo_agents/services/agent_service.py
 """
-Agent Service for managing agent sessions and message processing.
+Agent Service for managing agent sessions and message processing - UPDATED WITH YOUTUBE SUPPORT.
 """
 
 import asyncio
@@ -25,7 +25,7 @@ from .factory import AgentFactory
 
 
 class AgentSession:
-    """Manages a single agent session"""
+    """Manages a single agent session - UPDATED WITH YOUTUBE SUPPORT"""
 
     def __init__(self, session_id: str, preferred_llm_provider: str = None):
         # Load configuration from YAML
@@ -70,7 +70,7 @@ class AgentSession:
             raise e
 
     def _initialize_agents(self):
-        """Initialize all agents based on configuration"""
+        """Initialize all agents based on configuration - UPDATED WITH YOUTUBE SUPPORT"""
 
         # Core Assistant Agent
         assistant_id = f"assistant_{self.session_id}"
@@ -98,7 +98,6 @@ class AgentSession:
             )
 
         # Create specialized agents based on enabled capabilities
-        # This replaces the single RESEARCHER role with specific agent types
 
         # Web Search Agent (if enabled)
         if self.capabilities.get('web_search', False):
@@ -164,8 +163,25 @@ class AgentSession:
             except Exception as e:
                 self.logger.error(f"Failed to create MediaEditorAgent: {e}")
 
+        # YouTube Download Agent (if enabled) - NEW
+        if self.capabilities.get('youtube_download', False):
+            youtube_id = f"youtube_{self.session_id}"
+            youtube_memory = create_redis_memory_manager(youtube_id, self.redis_config)
+
+            try:
+                from ..agents.youtube_download import YouTubeDownloadAgent
+                self.agents['youtube_download'] = YouTubeDownloadAgent(
+                    agent_id=youtube_id,
+                    memory_manager=youtube_memory,
+                    llm_service=self.llm_service
+                )
+                self.logger.info("Created YouTubeDownloadAgent")
+            except Exception as e:
+                self.logger.error(f"Failed to create YouTubeDownloadAgent: {e}")
+
         # Fallback: Create a general researcher agent if no specialized agents were created
-        if not any(key in self.agents for key in ['web_search', 'knowledge_base', 'web_scraper', 'media_editor']):
+        specialized_agents = ['web_search', 'knowledge_base', 'web_scraper', 'media_editor', 'youtube_download']
+        if not any(key in self.agents for key in specialized_agents):
             researcher_id = f"researcher_{self.session_id}"
             researcher_memory = create_redis_memory_manager(researcher_id, self.redis_config)
 
@@ -301,7 +317,7 @@ class AgentSession:
 
 
 class AgentService:
-    """Agent Service for managing multiple agent sessions"""
+    """Agent Service for managing multiple agent sessions - UPDATED WITH YOUTUBE SUPPORT"""
 
     def __init__(self, preferred_llm_provider: str = None):
         """Initialize the Agent Service"""
@@ -330,7 +346,7 @@ class AgentService:
         self.total_sessions_created = 0
         self.start_time = datetime.now()
 
-        self.logger.info("Agent Service initialized from agent_config.yaml")
+        self.logger.info("Agent Service initialized from agent_config.yaml with YouTube support")
 
     def _setup_logging(self):
         """Setup logging configuration"""
@@ -465,7 +481,7 @@ class AgentService:
         }
 
     def health_check(self) -> dict[str, Any]:
-        """Comprehensive health check"""
+        """Comprehensive health check - UPDATED WITH YOUTUBE SUPPORT"""
         health_status: dict[str, Any] = {
             'service_available': True,
             'timestamp': datetime.now().isoformat(),
@@ -548,7 +564,7 @@ class AgentService:
 
 
 def create_agent_service(preferred_llm_provider: str = None) -> AgentService:
-    """Create agent service using YAML configuration exclusively"""
+    """Create agent service using YAML configuration exclusively - UPDATED WITH YOUTUBE SUPPORT"""
     return AgentService(preferred_llm_provider=preferred_llm_provider)
 
 
