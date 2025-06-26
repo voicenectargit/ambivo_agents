@@ -680,17 +680,38 @@ def end():
 @click.option('--format', '-f', type=click.Choice(['text', 'json']), default='text', help='Output format')
 def history(limit: int, format: str):
     """Show conversation history for the current session"""
-    current_session = cli_instance.get_current_session()
+
+    # Try to get the current session from shell mode first
+    try:
+        from pathlib import Path
+        session_file = Path.home() / '.ambivo' / 'current_session'
+        if session_file.exists():
+            current_session = session_file.read_text().strip()
+            click.echo(f"🔍 Debug: Using shell session: {current_session}")
+        else:
+            current_session = None
+            click.echo(f"🔍 Debug: No shell session file found")
+    except Exception as e:
+        current_session = None
+        click.echo(f"🔍 Debug: Error reading shell session: {e}")
 
     if not current_session:
         click.echo("❌ No active session")
         click.echo("💡 Create a session with: ambivo-agents session create my_session")
+        click.echo("💡 Or start shell mode: ambivo-agents")
         return
 
     async def show_history():
         try:
-            # Create a temporary AssistantAgent to access conversation history
-            agent, context = await cli_instance.create_agent(AssistantAgent, {"operation": "history_access"})
+            # Create a temporary AssistantAgent with the shell session
+            agent, context = await cli_instance.create_agent(AssistantAgent, {
+                "operation": "history_access",
+                "use_session": current_session
+            })
+
+            # Override the context to use the shell session
+            agent.context.session_id = current_session
+            agent.context.conversation_id = current_session
 
             # Get conversation history
             history_data = await agent.get_conversation_history(limit=limit, include_metadata=True)
@@ -743,6 +764,8 @@ def history(limit: int, format: str):
 
         except Exception as e:
             click.echo(f"❌ Error retrieving history: {e}")
+            import traceback
+            click.echo(f"🔍 Debug traceback: {traceback.format_exc()}")
 
     asyncio.run(show_history())
 
@@ -862,11 +885,11 @@ def shell():
                 return f"({session_short})> "
             else:
                 return f"ambivo-agents ({session_short})> "
-
-        if theme == 'minimal':
-            return "> "
         else:
-            return "ambivo-agents> "
+            if theme == 'minimal':
+                return "> "
+            else:
+                return "ambivo-agents> "
 
     def process_shell_command(command_line: str):
         """Process a command line in shell mode"""
@@ -1051,9 +1074,11 @@ def shell():
     # Helper functions for session commands
     def handle_session_history(limit: int = 20):
         """Handle session history command in shell"""
+        click.echo(f"🔍 Debug: handle_session_history called with limit {limit}")
 
         async def show_history():
             current_session = cli_instance.get_current_session()
+            click.echo(f"🔍 Debug: Current session from cli_instance: {current_session}")
 
             if not current_session:
                 click.echo("❌ No active session")
@@ -1061,10 +1086,14 @@ def shell():
 
             try:
                 # Create a temporary AssistantAgent to access conversation history
+                click.echo(f"🔍 Debug: Creating AssistantAgent...")
                 agent, context = await cli_instance.create_agent(AssistantAgent, {"operation": "history_access"})
+                click.echo(f"🔍 Debug: Agent created, context session: {context.session_id}")
 
                 # Get conversation history
+                click.echo(f"🔍 Debug: Getting conversation history...")
                 history_data = await agent.get_conversation_history(limit=limit, include_metadata=True)
+                click.echo(f"🔍 Debug: Retrieved {len(history_data) if history_data else 0} messages")
 
                 if not history_data:
                     click.echo(f"📋 No conversation history found for current session")
@@ -1093,6 +1122,8 @@ def shell():
 
             except Exception as e:
                 click.echo(f"❌ Error retrieving history: {e}")
+                import traceback
+                click.echo(f"🔍 Debug traceback: {traceback.format_exc()}")
 
         asyncio.run(show_history())
         return True
@@ -1161,10 +1192,88 @@ def shell():
         asyncio.run(clear_history())
         return True
 
+    # Replace the handle_session_history function with this corrected version:
+
+    def handle_session_history(limit: int = 20):
+        """Handle session history command in shell"""
+
+        async def show_history():
+            # Use the consistent session retrieval method
+            current_session = cli_instance.get_current_session()
+
+            if not current_session:
+                click.echo("❌ No active session")
+                return
+
+            try:
+                # Create a temporary AssistantAgent to access conversation history
+                agent, context = await cli_instance.create_agent(AssistantAgent, {"operation": "history_access"})
+
+                # Override the context to use the current shell session
+                agent.context.session_id = current_session
+                agent.context.conversation_id = current_session
+
+                # Get conversation history
+                history_data = await agent.get_conversation_history(limit=limit, include_metadata=True)
+
+                if not history_data:
+                    click.echo(f"📋 No conversation history found for current session")
+                    await agent.cleanup_session()
+                    return
+
+                session_display = current_session[:12] + "..." if len(current_session) > 12 else current_session
+                click.echo(f"📋 **Conversation History** (Session: {session_display})")
+                click.echo(f"📊 Total Messages: {len(history_data)}")
+                click.echo("=" * 50)
+
+                # Show last 10 messages in shell for readability
+                recent_messages = history_data[-10:] if len(history_data) > 10 else history_data
+
+                for i, msg in enumerate(recent_messages, 1):
+                    content = msg.get('content', '')
+                    # Truncate long messages for shell display
+                    if len(content) > 100:
+                        content = content[:100] + "..."
+
+                    message_type = msg.get('message_type', 'unknown')
+                    timestamp = msg.get('timestamp', 'Unknown time')
+
+                    # Format timestamp
+                    if isinstance(timestamp, str):
+                        try:
+                            from datetime import datetime
+                            dt = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+                            timestamp = dt.strftime('%H:%M:%S')
+                        except:
+                            timestamp = str(timestamp)[:8]
+
+                    if message_type == 'user_input':
+                        click.echo(f"{i}. 🗣️  You ({timestamp}): {content}")
+                    elif message_type == 'agent_response':
+                        sender = msg.get('sender_id', 'agent')[:10]
+                        click.echo(f"{i}. 🤖 {sender} ({timestamp}): {content}")
+                    else:
+                        click.echo(f"{i}. ℹ️  {message_type} ({timestamp}): {content}")
+
+                if len(history_data) > 10:
+                    click.echo(f"\n💡 Showing last 10 of {len(history_data)} messages")
+                    click.echo("💡 Use 'session history 50' to see more")
+
+                await agent.cleanup_session()
+
+            except Exception as e:
+                click.echo(f"❌ Error retrieving history: {e}")
+                if cli_instance.config.get('cli.verbose', False):
+                    import traceback
+                    click.echo(f"🔍 Debug traceback: {traceback.format_exc()}")
+
+        asyncio.run(show_history())
+        return True
+
     def handle_session_command(args):
         """Handle session subcommands"""
         if not args:
-            click.echo("❌ Usage: session <create|current|status|use|end> [name]")
+            click.echo("❌ Usage: session <create|current|status|use|end|history|summary|clear> [args]")
             return True
 
         subcmd = args[0].lower()
@@ -1226,11 +1335,29 @@ def shell():
                     click.echo("❌ Failed to end session")
             else:
                 click.echo("❌ No active session to end")
+
+        # ADD THESE MISSING CASES:
+        elif subcmd == 'history':
+            limit = 20  # default
+            if len(args) > 1 and args[1].isdigit():
+                limit = int(args[1])
+            return handle_session_history(limit)
+
+        elif subcmd == 'summary':
+            return handle_session_summary()
+
+        elif subcmd == 'clear':
+            # Add confirmation in shell mode
+            if click.confirm('Are you sure you want to clear the conversation history?'):
+                return handle_session_clear()
+            else:
+                click.echo("❌ Operation cancelled")
+
         else:
             click.echo(f"❌ Unknown session command: {subcmd}")
+            click.echo("💡 Available: create, current, status, use, end, history, summary, clear")
 
         return True
-
     def handle_chat_command(args):
         """Handle chat command"""
         if not args:
@@ -1358,15 +1485,14 @@ def shell():
             try:
                 prompt = get_prompt()
 
-                # Use click.prompt with proper handling
+                # Use input() instead of click.prompt() for better control
                 try:
-                    command_line = click.prompt(prompt, type=str, show_default=False, err=True)
+                    command_line = input(prompt)
                 except (KeyboardInterrupt, EOFError):
                     click.echo("\n👋 Goodbye!")
                     break
                 except Exception as e:
-                    # Handle any prompt errors gracefully
-                    click.echo(f"\n⚠️  Prompt error: {e}")
+                    click.echo(f"\n⚠️  Input error: {e}")
                     continue
 
                 # Process command
