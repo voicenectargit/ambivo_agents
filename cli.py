@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Ambivo Agents CLI Interface - Updated with YouTube Download Support
+Ambivo Agents CLI Interface - Updated with  .create() Paradigm
 
 Author: Hemant Gosain 'Sunny'
 Company: Ambivo
@@ -15,41 +15,226 @@ import sys
 import time
 from pathlib import Path
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Dict, Any
 
-# Import from the package
-from ambivo_agents.services import create_agent_service
+# 🌟 : Import agents directly using clean imports
+from ambivo_agents import (
+    KnowledgeBaseAgent,
+    YouTubeDownloadAgent,
+    MediaEditorAgent,
+    WebSearchAgent,
+    WebScraperAgent,
+    CodeExecutorAgent,
+    AgentSession
+)
+
+# Fallback to service for complex routing if needed
+try:
+    from ambivo_agents.services import create_agent_service
+
+    SERVICE_AVAILABLE = True
+except ImportError:
+    SERVICE_AVAILABLE = False
 
 
 class AmbivoAgentsCLI:
-    """Command-line interface for Ambivo Agents"""
+    """Command-line interface for Ambivo Agents with  .create() paradigm"""
 
     def __init__(self):
-        self.agent_service = None
-        self.session_id = None
         self.user_id = "cli_user"
+        self.tenant_id = "cli_tenant"
+        self.session_metadata = {"cli_session": True, "version": "1.3.0"}
 
-    def initialize_service(self):
-        """Initialize the agent service"""
-        if not self.agent_service:
-            try:
-                self.agent_service = create_agent_service()
-                self.session_id = self.agent_service.create_session()
-                click.echo(f"✅ Initialized Ambivo Agents (Session: {self.session_id[:8]}...)")
-            except Exception as e:
-                click.echo(f"❌ Failed to initialize Ambivo Agents: {e}", err=True)
-                sys.exit(1)
+    async def create_agent(self, agent_class, additional_metadata: Dict[str, Any] = None):
+        """Create agent using the  .create() pattern"""
+        metadata = {**self.session_metadata}
+        if additional_metadata:
+            metadata.update(additional_metadata)
 
-    async def process_message(self, message: str, conversation_id: str = "cli") -> dict:
-        """Process a message through the agent system"""
-        self.initialize_service()
-
-        return await self.agent_service.process_message(
-            message=message,
-            session_id=self.session_id,
+        agent, context = agent_class.create(
             user_id=self.user_id,
-            conversation_id=conversation_id
+            tenant_id=self.tenant_id,
+            session_metadata=metadata
         )
+
+        click.echo(f"✅ Created {agent_class.__name__} (Session: {context.session_id[:8]}...)")
+        return agent, context
+
+    async def smart_message_routing(self, message: str) -> str:
+        """
+        Smart routing to appropriate agent based on message content
+        Uses the  direct agent approach
+        """
+        message_lower = message.lower()
+
+        # 🎬 YouTube Download Detection
+        if any(keyword in message_lower for keyword in ['youtube', 'download', 'youtu.be']) and (
+                'http' in message or 'www.' in message):
+            agent, context = await self.create_agent(YouTubeDownloadAgent, {"operation": "youtube_download"})
+
+            try:
+                # Extract YouTube URLs
+                import re
+                youtube_patterns = [
+                    r'https?://(?:www\.)?youtube\.com/watch\?v=[\w-]+',
+                    r'https?://(?:www\.)?youtu\.be/[\w-]+',
+                ]
+
+                urls = []
+                for pattern in youtube_patterns:
+                    urls.extend(re.findall(pattern, message))
+
+                if urls:
+                    url = urls[0]  # Use first URL found
+
+                    # Determine if user wants audio or video
+                    wants_video = any(keyword in message_lower for keyword in ['video', 'mp4', 'watch', 'visual'])
+                    audio_only = not wants_video
+
+                    if 'info' in message_lower or 'information' in message_lower:
+                        result = await agent._get_youtube_info(url)
+                    else:
+                        result = await agent._download_youtube(url, audio_only=audio_only)
+
+                    await agent.cleanup_session()
+
+                    if result['success']:
+                        return f"✅ YouTube operation completed!\n{result.get('message', '')}\nSession: {context.session_id}"
+                    else:
+                        return f"❌ YouTube operation failed: {result['error']}"
+                else:
+                    await agent.cleanup_session()
+                    return "❌ No valid YouTube URLs found in message"
+
+            except Exception as e:
+                await agent.cleanup_session()
+                return f"❌ YouTube operation error: {e}"
+
+        # 🎵 Media Processing Detection
+        elif any(keyword in message_lower for keyword in
+                 ['extract audio', 'convert video', 'media', 'ffmpeg', '.mp4', '.avi', '.mov']):
+            agent, context = await self.create_agent(MediaEditorAgent, {"operation": "media_processing"})
+
+            try:
+                # Simple routing based on keywords
+                if 'extract audio' in message_lower:
+                    return "🎵 Media Editor Agent ready for audio extraction!\nPlease provide the input file path for processing."
+                elif 'convert' in message_lower:
+                    return "🎥 Media Editor Agent ready for video conversion!\nPlease provide the input file path and target format."
+                else:
+                    return "🎬 Media Editor Agent ready!\nI can extract audio, convert videos, resize, trim, and more."
+
+            finally:
+                await agent.cleanup_session()
+
+        # 📚 Knowledge Base Detection
+        elif any(keyword in message_lower for keyword in ['knowledge base', 'ingest', 'query', 'document', 'kb ']):
+            agent, context = await self.create_agent(KnowledgeBaseAgent, {"operation": "knowledge_base"})
+
+            try:
+                if 'ingest' in message_lower:
+                    return "📄 Knowledge Base Agent ready for document ingestion!\nPlease provide the document path and knowledge base name."
+                elif 'query' in message_lower:
+                    return "🔍 Knowledge Base Agent ready for queries!\nPlease provide your question and knowledge base name."
+                else:
+                    return "📚 Knowledge Base Agent ready!\nI can ingest documents and answer questions based on your knowledge bases."
+
+            finally:
+                await agent.cleanup_session()
+
+        # 🔍 Web Search Detection
+        elif any(keyword in message_lower for keyword in ['search', 'find', 'look up', 'google']):
+            agent, context = await self.create_agent(WebSearchAgent, {"operation": "web_search"})
+
+            try:
+                # Extract search query
+                search_query = message
+                for prefix in ['search for', 'find', 'look up', 'google']:
+                    if prefix in message_lower:
+                        search_query = message[message_lower.find(prefix) + len(prefix):].strip()
+                        break
+
+                result = await agent._search_web(search_query, max_results=5)
+                await agent.cleanup_session()
+
+                if result['success']:
+                    response = f"🔍 Search Results for '{search_query}':\n\n"
+                    for i, res in enumerate(result['results'][:3], 1):
+                        response += f"{i}. **{res.get('title', 'No title')}**\n"
+                        response += f"   {res.get('url', 'No URL')}\n"
+                        response += f"   {res.get('snippet', 'No snippet')[:150]}...\n\n"
+                    response += f"Session: {context.session_id}"
+                    return response
+                else:
+                    return f"❌ Search failed: {result['error']}"
+
+            except Exception as e:
+                await agent.cleanup_session()
+                return f"❌ Search error: {e}"
+
+        # 🕷️ Web Scraping Detection
+        elif any(keyword in message_lower for keyword in ['scrape', 'extract', 'crawl']) and (
+                'http' in message or 'www.' in message):
+            agent, context = await self.create_agent(WebScraperAgent, {"operation": "web_scraping"})
+
+            try:
+                # Extract URLs
+                import re
+                url_pattern = r'https?://[^\s]+'
+                urls = re.findall(url_pattern, message)
+
+                if urls:
+                    url = urls[0]
+                    return f"🕷️ Web Scraper Agent ready to scrape: {url}\nSession: {context.session_id}\n(Note: Actual scraping requires proper configuration)"
+                else:
+                    return "❌ No valid URLs found for scraping"
+
+            finally:
+                await agent.cleanup_session()
+
+        # 💻 Code Execution Detection
+        elif '```' in message:
+            agent, context = await self.create_agent(CodeExecutorAgent, {"operation": "code_execution"})
+
+            try:
+                return f"💻 Code Executor Agent ready!\nSession: {context.session_id}\n(Note: Code execution requires Docker configuration)"
+
+            finally:
+                await agent.cleanup_session()
+
+        # 🤖 General Assistant (fallback)
+        else:
+            # For general queries, provide helpful guidance
+            return f"""🤖 Ambivo Agents CLI - How can I help?
+
+I can assist with:
+
+🎬 **YouTube Downloads**
+   'download audio from https://youtube.com/watch?v=example'
+   'download video from https://youtube.com/watch?v=example'
+
+🎵 **Media Processing**
+   'extract audio from video.mp4'
+   'convert video.avi to mp4'
+
+📚 **Knowledge Base**
+   'ingest document file.pdf into knowledge base'
+   'query knowledge base: what is our policy?'
+
+🔍 **Web Search**
+   'search for artificial intelligence trends'
+   'find latest s about space exploration'
+
+🕷️ **Web Scraping**
+   'scrape https://example.com'
+
+💻 **Code Execution**
+   ```python
+   print('Hello World')
+   ```
+
+Type 'ambivo-agents interactive' for interactive mode!
+"""
 
 
 # Initialize CLI instance
@@ -64,19 +249,26 @@ def cli(config: Optional[str], verbose: bool):
     """
     Ambivo Agents - Multi-Agent AI System CLI
 
-    A comprehensive toolkit for AI-powered automation including
-    media processing, knowledge base operations, web scraping,
-    YouTube downloads, and more.
+    🌟 : Uses the .create() paradigm for direct agent creation
+    Each agent is created with explicit context management.
+
+    Features:
+    - YouTube Downloads with pytubefix
+    - Media Processing with FFmpeg
+    - Knowledge Base Operations with Qdrant
+    - Web Search with multiple providers
+    - Web Scraping with proxy support
+    - Code Execution in Docker containers
 
     Author: Hemant Gosain 'Sunny'
     Company: Ambivo
     Email: sgosain@ambivo.com
     """
     if verbose:
-        click.echo("🤖 Ambivo Agents CLI v1.3.0")
+        click.echo("🤖 Ambivo Agents CLI v1.3.0 -  .create() Paradigm")
         click.echo("📧 Contact: sgosain@ambivo.com")
         click.echo("🏢 Company: https://www.ambivo.com")
-        click.echo("🎬 NEW: YouTube Download Support")
+        click.echo("🌟 : Direct agent creation with explicit context")
 
     if config:
         click.echo(f"📋 Using config file: {config}")
@@ -84,267 +276,81 @@ def cli(config: Optional[str], verbose: bool):
 
 @cli.command()
 def health():
-    """Check system health and status"""
-    click.echo("🏥 Checking Ambivo Agents Health...")
+    """Check system health using direct agent creation"""
+    click.echo("🏥 Checking Ambivo Agents Health ( .create() approach)...")
 
-    try:
-        cli_instance.initialize_service()
-        health_status = cli_instance.agent_service.health_check()
+    agents_to_test = [
+        ("YouTube Download", YouTubeDownloadAgent),
+        ("Media Editor", MediaEditorAgent),
+        ("Knowledge Base", KnowledgeBaseAgent),
+        ("Web Search", WebSearchAgent),
+        ("Web Scraper", WebScraperAgent),
+        ("Code Executor", CodeExecutorAgent),
+    ]
 
-        click.echo("\n📊 Health Status:")
-        click.echo(f"  Service Available: {'✅' if health_status['service_available'] else '❌'}")
-        click.echo(f"  Redis Available: {'✅' if health_status.get('redis_available') else '❌'}")
-        click.echo(f"  LLM Available: {'✅' if health_status.get('llm_service_available') else '❌'}")
-        click.echo(f"  Active Sessions: {health_status.get('active_sessions', 0)}")
+    async def health_check():
+        results = {}
 
-        if health_status.get('available_agent_types'):
-            click.echo("\n🤖 Available Agents:")
-            for agent_type, available in health_status['available_agent_types'].items():
-                status = "✅" if available else "❌"
-                click.echo(f"  {agent_type}: {status}")
+        for agent_name, agent_class in agents_to_test:
+            try:
+                agent, context = await cli_instance.create_agent(agent_class)
+                await agent.cleanup_session()
+                results[agent_name] = "✅ Available"
+            except Exception as e:
+                results[agent_name] = f"❌ Error: {str(e)[:50]}..."
 
-        if not health_status['service_available']:
+        click.echo("\n📊 Agent Health Status:")
+        for agent_name, status in results.items():
+            click.echo(f"  {agent_name}: {status}")
+
+        available_count = len([s for s in results.values() if "✅" in s])
+        total_count = len(results)
+
+        click.echo(f"\n📈 Summary: {available_count}/{total_count} agents available")
+
+        if available_count == 0:
+            click.echo("❌ No agents available - check configuration")
             sys.exit(1)
+        elif available_count < total_count:
+            click.echo("⚠️  Some agents unavailable - partial functionality")
+        else:
+            click.echo("🎉 All agents healthy!")
 
-    except Exception as e:
-        click.echo(f"❌ Health check failed: {e}", err=True)
-        sys.exit(1)
+    asyncio.run(health_check())
 
 
 @cli.command()
 @click.argument('message')
-@click.option('--conversation', '-conv', default='cli', help='Conversation ID')
 @click.option('--format', '-f', type=click.Choice(['text', 'json']), default='text', help='Output format')
-def chat(message: str, conversation: str, format: str):
-    """Send a message to the agent system"""
-    click.echo(f"💬 Processing message: {message}")
+def chat(message: str, format: str):
+    """Send a message using smart agent routing ( .create() approach)"""
+    click.echo(f"💬 Processing: {message}")
 
     async def process():
-        result = await cli_instance.process_message(message, conversation)
+        start_time = time.time()
+        response = await cli_instance.smart_message_routing(message)
+        processing_time = time.time() - start_time
 
         if format == 'json':
+            result = {
+                'success': True,
+                'response': response,
+                'processing_time': processing_time,
+                'message': message,
+                'paradigm': 'direct_agent_creation'
+            }
             click.echo(json.dumps(result, indent=2))
         else:
-            if result['success']:
-                click.echo(f"🤖 Response: {result['response']}")
-                click.echo(f"⏱️  Time: {result['processing_time']:.2f}s")
-                click.echo(f"🔧 Agent: {result['agent_id']}")
-            else:
-                click.echo(f"❌ Error: {result['error']}", err=True)
-
-    asyncio.run(process())
-
-
-@cli.group()
-def media():
-    """Media processing commands"""
-    pass
-
-
-@media.command()
-@click.argument('input_file')
-@click.option('--output-format', '-f', default='mp3', type=click.Choice(['mp3', 'wav', 'aac', 'flac']),
-              help='Output format')
-@click.option('--quality', '-q', default='medium', type=click.Choice(['low', 'medium', 'high']), help='Audio quality')
-def extract_audio(input_file: str, output_format: str, quality: str):
-    """Extract audio from video file"""
-    if not Path(input_file).exists():
-        click.echo(f"❌ File not found: {input_file}", err=True)
-        sys.exit(1)
-
-    click.echo(f"🎵 Extracting audio from: {input_file}")
-
-    message = f"""Extract audio from the video file at path: {input_file}
-
-Please use the following settings:
-- Output format: {output_format}
-- Audio quality: {quality}
-
-Use the extract_audio_from_video tool to process this file."""
-
-    async def process():
-        result = await cli_instance.process_message(message, "media_extract")
-
-        if result['success']:
-            click.echo(f"✅ {result['response']}")
-        else:
-            click.echo(f"❌ Error: {result['error']}", err=True)
-
-    asyncio.run(process())
-
-
-@media.command()
-@click.argument('input_file')
-@click.option('--output-format', '-f', default='mp4', type=click.Choice(['mp4', 'avi', 'mov', 'mkv']),
-              help='Output format')
-@click.option('--codec', '-c', default='h264', type=click.Choice(['h264', 'h265', 'vp9']), help='Video codec')
-def convert_video(input_file: str, output_format: str, codec: str):
-    """Convert video to different format"""
-    if not Path(input_file).exists():
-        click.echo(f"❌ File not found: {input_file}", err=True)
-        sys.exit(1)
-
-    click.echo(f"🎥 Converting video: {input_file}")
-
-    message = f"""Convert the video file at path: {input_file}
-
-Please use the following settings:
-- Output format: {output_format}
-- Video codec: {codec}
-
-Use the convert_video_format tool to process this file."""
-
-    async def process():
-        result = await cli_instance.process_message(message, "media_convert")
-
-        if result['success']:
-            click.echo(f"✅ {result['response']}")
-        else:
-            click.echo(f"❌ Error: {result['error']}", err=True)
-
-    asyncio.run(process())
-
-
-@cli.group()
-def kb():
-    """Knowledge base commands"""
-    pass
-
-
-@kb.command()
-@click.argument('file_path')
-@click.option('--kb-name', '-k', default='default_kb', help='Knowledge base name')
-def ingest_file(file_path: str, kb_name: str):
-    """Ingest a document file into knowledge base"""
-    if not Path(file_path).exists():
-        click.echo(f"❌ File not found: {file_path}", err=True)
-        sys.exit(1)
-
-    click.echo(f"📄 Ingesting {file_path} into {kb_name}")
-
-    message = f"""Ingest the document file at path: {file_path}
-
-Please use the ingest_document tool to process this file into the knowledge base "{kb_name}" with appropriate metadata."""
-
-    async def process():
-        result = await cli_instance.process_message(message, "kb_ingest")
-
-        if result['success']:
-            click.echo(f"✅ {result['response']}")
-        else:
-            click.echo(f"❌ Error: {result['error']}", err=True)
-
-    asyncio.run(process())
-
-
-@kb.command()
-@click.argument('query')
-@click.option('--kb-name', '-k', default='default_kb', help='Knowledge base name')
-def query(query: str, kb_name: str):
-    """Query a knowledge base"""
-    click.echo(f"🔍 Querying {kb_name}: {query}")
-
-    message = f"""Query the knowledge base "{kb_name}" with this question: {query}
-
-Please use the query_knowledge_base tool to find relevant information."""
-
-    async def process():
-        result = await cli_instance.process_message(message, "kb_query")
-
-        if result['success']:
-            click.echo(f"✅ {result['response']}")
-        else:
-            click.echo(f"❌ Error: {result['error']}", err=True)
-
-    asyncio.run(process())
-
-
-@cli.group()
-def scrape():
-    """Web scraping commands"""
-    pass
-
-
-@scrape.command()
-@click.argument('url')
-@click.option('--output', '-o', help='Output file path')
-def url(url: str, output: Optional[str]):
-    """Scrape a single URL"""
-    click.echo(f"🕷️ Scraping: {url}")
-
-    message = f"""Scrape the web page at this URL: {url}
-
-Please extract:
-- Page content
-- All links
-- Images
-- Any structured data
-
-Use the scrape_url tool to fetch this content."""
-
-    async def process():
-        result = await cli_instance.process_message(message, "scrape_url")
-
-        if result['success']:
-            if output:
-                output_path = Path(output)
-                response_data = {
-                    'url': url,
-                    'scraped_at': datetime.now().isoformat(),
-                    'content': result['response']
-                }
-
-                with open(output_path, 'w', encoding='utf-8') as f:
-                    json.dump(response_data, f, indent=2)
-                click.echo(f"💾 Saved to: {output_path}")
-            else:
-                click.echo(result['response'])
-        else:
-            click.echo(f"❌ Error: {result['error']}", err=True)
-
-    asyncio.run(process())
-
-
-@scrape.command()
-@click.argument('urls', nargs=-1, required=True)
-@click.option('--output-dir', '-o', default='./scraped_content', help='Output directory')
-def batch(urls, output_dir: str):
-    """Batch scrape multiple URLs"""
-    click.echo(f"📦 Batch scraping {len(urls)} URLs")
-
-    url_list = " ".join(urls)
-    message = f"""Batch scrape these URLs: {url_list}
-
-Please extract content from all URLs and provide a summary."""
-
-    async def process():
-        result = await cli_instance.process_message(message, "scrape_batch")
-
-        if result['success']:
-            output_path = Path(output_dir)
-            output_path.mkdir(exist_ok=True)
-
-            output_file = output_path / f"batch_scrape_{int(time.time())}.json"
-            response_data = {
-                'urls': list(urls),
-                'scraped_at': datetime.now().isoformat(),
-                'results': result['response']
-            }
-
-            with open(output_file, 'w', encoding='utf-8') as f:
-                json.dump(response_data, f, indent=2)
-
-            click.echo(f"✅ {result['response']}")
-            click.echo(f"💾 Saved to: {output_file}")
-        else:
-            click.echo(f"❌ Error: {result['error']}", err=True)
+            click.echo(f"\n🤖 Response:\n{response}")
+            click.echo(f"\n⏱️  Processing time: {processing_time:.2f}s")
+            click.echo(f"🌟 Using  .create() paradigm")
 
     asyncio.run(process())
 
 
 @cli.group()
 def youtube():
-    """YouTube download commands"""
+    """YouTube download commands using direct agent creation"""
     pass
 
 
@@ -354,141 +360,97 @@ def youtube():
 @click.option('--video', '-v', is_flag=True, help='Download video (overrides --audio-only)')
 @click.option('--output-name', '-n', help='Custom output filename (without extension)')
 def download(url: str, audio_only: bool, video: bool, output_name: Optional[str]):
-    """Download video or audio from YouTube"""
+    """Download from YouTube using direct YouTubeDownloadAgent.create()"""
 
-    # If --video flag is used, override audio_only
     if video:
         audio_only = False
 
     content_type = "video" if not audio_only else "audio"
     click.echo(f"🎬 Downloading {content_type} from: {url}")
 
-    if output_name:
-        message = f"""Download {'audio' if audio_only else 'video'} from {url} with custom filename "{output_name}" """
-    else:
-        message = f"""Download {'audio' if audio_only else 'video'} from {url}"""
+    async def download_process():
+        try:
+            # 🌟 : Direct agent creation
+            agent, context = await cli_instance.create_agent(
+                YouTubeDownloadAgent,
+                {"operation": "youtube_download", "url": url}
+            )
 
-    async def process():
-        result = await cli_instance.process_message(message, "youtube_download")
+            click.echo(f"📋 Session ID: {context.session_id}")
+            click.echo(f"👤 User: {context.user_id}")
 
-        if result['success']:
-            click.echo(f"✅ {result['response']}")
-        else:
-            click.echo(f"❌ Error: {result['error']}", err=True)
+            # Use the agent directly
+            if audio_only:
+                result = await agent._download_youtube_audio(url, output_name)
+            else:
+                result = await agent._download_youtube_video(url, output_name)
 
-    asyncio.run(process())
+            if result['success']:
+                click.echo(f"✅ Download successful!")
+                click.echo(f"📁 File: {result.get('filename', 'Unknown')}")
+                click.echo(f"📍 Path: {result.get('file_path', 'Unknown')}")
+                click.echo(f"📊 Size: {result.get('file_size_bytes', 0):,} bytes")
+                click.echo(f"⏱️  Time: {result.get('execution_time', 0):.2f}s")
+            else:
+                click.echo(f"❌ Download failed: {result['error']}")
+
+            # Cleanup
+            await agent.cleanup_session()
+            click.echo(f"🧹 Session cleaned up")
+
+        except Exception as e:
+            click.echo(f"❌ Error: {e}")
+
+    asyncio.run(download_process())
 
 
 @youtube.command()
 @click.argument('url')
 def info(url: str):
-    """Get information about a YouTube video"""
+    """Get YouTube video info using direct agent creation"""
     click.echo(f"📹 Getting video info: {url}")
 
-    message = f"""Get information about this YouTube video: {url}
+    async def info_process():
+        try:
+            # 🌟 : Direct agent creation
+            agent, context = await cli_instance.create_agent(
+                YouTubeDownloadAgent,
+                {"operation": "youtube_info", "url": url}
+            )
 
-Please provide details like title, duration, views, and available streams."""
+            result = await agent._get_youtube_info(url)
 
-    async def process():
-        result = await cli_instance.process_message(message, "youtube_info")
+            if result['success']:
+                video_info = result['video_info']
+                click.echo(f"✅ Video Information:")
+                click.echo(f"📹 Title: {video_info.get('title', 'Unknown')}")
+                click.echo(f"👤 Author: {video_info.get('author', 'Unknown')}")
+                click.echo(f"⏱️  Duration: {video_info.get('duration', 0)} seconds")
+                click.echo(f"👀 Views: {video_info.get('views', 0):,}")
+                click.echo(f"📋 Session: {context.session_id}")
+            else:
+                click.echo(f"❌ Failed to get video info: {result['error']}")
 
-        if result['success']:
-            click.echo(result['response'])
-        else:
-            click.echo(f"❌ Error: {result['error']}", err=True)
+            await agent.cleanup_session()
 
-    asyncio.run(process())
+        except Exception as e:
+            click.echo(f"❌ Error: {e}")
 
-
-@youtube.command()
-@click.argument('urls', nargs=-1, required=True)
-@click.option('--audio-only', '-a', is_flag=True, default=True, help='Download audio only (default)')
-@click.option('--video', '-v', is_flag=True, help='Download video (overrides --audio-only)')
-def batch(urls, audio_only: bool, video: bool):
-    """Batch download multiple YouTube videos"""
-
-    # If --video flag is used, override audio_only
-    if video:
-        audio_only = False
-
-    content_type = "video" if not audio_only else "audio"
-    click.echo(f"📦 Batch downloading {content_type} from {len(urls)} URLs")
-
-    url_list = " ".join(urls)
-    message = f"""Batch download {'audio' if audio_only else 'video'} from these YouTube URLs: {url_list}"""
-
-    async def process():
-        result = await cli_instance.process_message(message, "youtube_batch")
-
-        if result['success']:
-            click.echo(f"✅ {result['response']}")
-        else:
-            click.echo(f"❌ Error: {result['error']}", err=True)
-
-    asyncio.run(process())
-
-
-@cli.group()
-def search():
-    """Web search commands"""
-    pass
-
-
-@search.command()
-@click.argument('query')
-@click.option('--max-results', '-n', default=5, help='Maximum number of results')
-def web(query: str, max_results: int):
-    """Search the web"""
-    click.echo(f"🔍 Searching: {query}")
-
-    message = f"""Search the web for: {query}
-
-Please find the top {max_results} most relevant results."""
-
-    async def process():
-        result = await cli_instance.process_message(message, "web_search")
-
-        if result['success']:
-            click.echo(f"✅ {result['response']}")
-        else:
-            click.echo(f"❌ Error: {result['error']}", err=True)
-
-    asyncio.run(process())
-
-
-@search.command()
-@click.argument('query')
-@click.option('--max-results', '-n', default=5, help='Maximum number of results')
-def news(query: str, max_results: int):
-    """Search for news"""
-    click.echo(f"📰 Searching news: {query}")
-
-    message = f"""Search for recent news about: {query}
-
-Please find the top {max_results} most recent and relevant news articles."""
-
-    async def process():
-        result = await cli_instance.process_message(message, "news_search")
-
-        if result['success']:
-            click.echo(f"✅ {result['response']}")
-        else:
-            click.echo(f"❌ Error: {result['error']}", err=True)
-
-    asyncio.run(process())
+    asyncio.run(info_process())
 
 
 @cli.command()
 def interactive():
-    """Start interactive chat mode"""
-    click.echo("🤖 Starting Ambivo Agents Interactive Mode")
+    """Interactive chat mode using the  .create() paradigm"""
+    click.echo("🤖 Ambivo Agents Interactive Mode ( .create() Paradigm)")
+    click.echo("🌟 Each message creates agents directly with explicit context")
     click.echo("Type 'quit', 'exit', or 'bye' to exit")
     click.echo("Type 'help' for available commands")
-    click.echo("-" * 50)
-
-    conversation_id = f"interactive_{int(time.time())}"
+    click.echo("-" * 60)
 
     async def interactive_loop():
+        conversation_history = []
+
         while True:
             try:
                 user_input = click.prompt("\n🗣️  You", type=str)
@@ -498,60 +460,54 @@ def interactive():
                     break
                 elif user_input.lower() == 'help':
                     click.echo("""
-🤖 Available Commands & Examples:
+🌟 Ambivo Agents -  .create() Paradigm Help
 
-📝 General:
-- Ask any question or give instructions
-- 'what is artificial intelligence?'
-- 'explain quantum computing'
+📝 **Direct Agent Creation Examples:**
 
-🎥 Media Processing:
-- 'extract audio from /path/to/video.mp4'
-- 'convert /path/to/video.avi to mp4'
-- 'resize video /path/to/video.mp4 to 720p'
+🎬 **YouTube Downloads:**
+   'download audio from https://youtube.com/watch?v=example'
+   'download video from https://youtube.com/watch?v=example'
+   'get info about https://youtube.com/watch?v=example'
 
-📚 Knowledge Base:
-- 'ingest document /path/to/doc.pdf into knowledge base'
-- 'query knowledge base: what is our return policy?'
-- 'search documents for machine learning'
+🎵 **Media Processing:**
+   'extract audio from video.mp4'
+   'convert video.avi to mp4'
 
-🕷️ Web Scraping:
-- 'scrape https://example.com'
-- 'extract content from https://news.site.com'
+📚 **Knowledge Base:**
+   'ingest document file.pdf into knowledge base'
+   'query knowledge base: what is our policy?'
 
-🎬 YouTube Downloads:
-- 'download audio from https://youtube.com/watch?v=example'
-- 'download video from https://youtube.com/watch?v=example'
-- 'get info about https://youtube.com/watch?v=example'
-- 'download https://youtube.com/watch?v=url1 and https://youtube.com/watch?v=url2'
+🔍 **Web Search:**
+   'search for artificial intelligence trends'
+   'find latest s about space exploration'
 
-🔍 Web Search:
-- 'search for latest AI trends 2024'
-- 'find news about space exploration'
-- 'search web for Python tutorials'
+🕷️ **Web Scraping:**
+   'scrape https://example.com'
 
-💻 Code Execution:
-- ```python
-  print('Hello World')
-  import math
-  print(math.pi)
-  ```
-- ```bash
-  ls -la
-  df -h
-  ```
+💻 **Code Execution:**
+   ```python
+   print('Hello World')
+   import datetime
+   print(datetime.datetime.now())
+   ```
 
-🚪 Exit:
-- 'quit' or 'exit' to leave
+🌟 **Key Features:**
+   - Each operation creates agents directly with .create()
+   - Explicit context management with session IDs
+   - Automatic cleanup after operations
+   - Direct agent-to-tool communication
                     """)
                     continue
 
-                result = await cli_instance.process_message(user_input, conversation_id)
+                # Store user input
+                conversation_history.append(f"User: {user_input}")
 
-                if result['success']:
-                    click.echo(f"🤖 Agent: {result['response']}")
-                else:
-                    click.echo(f"❌ Error: {result['error']}")
+                # Process with smart routing
+                response = await cli_instance.smart_message_routing(user_input)
+                conversation_history.append(f"Agent: {response[:100]}...")
+
+                click.echo(f"🤖 Agent: {response}")
+                click.echo(f"💡 Used  .create() paradigm for direct agent creation")
 
             except KeyboardInterrupt:
                 click.echo("\n👋 Goodbye!")
@@ -565,40 +521,36 @@ def interactive():
 
 @cli.command()
 def demo():
-    """Run a demo showcasing various capabilities"""
-    click.echo("🎪 Ambivo Agents Demo")
-    click.echo("=" * 50)
+    """Demo showcasing the  .create() paradigm"""
+    click.echo("🎪 Ambivo Agents Demo -  .create() Paradigm")
+    click.echo("=" * 60)
+    click.echo("🌟 This demo shows direct agent creation with explicit context")
 
     demos = [
-        ("💬 General Chat", "Hello! What can you help me with today?"),
-        ("🔍 Web Search", "search for latest developments in artificial intelligence"),
-        ("📊 Knowledge", "What are the key principles of machine learning?"),
-        ("💻 Code",
-         "```python\nprint('Demo: Hello from Python!')\nimport datetime\nprint(f'Current time: {datetime.datetime.now()}')\n```"),
+        ("🎬 YouTube Agent", "get info about https://youtube.com/watch?v=dQw4w9WgXcQ"),
+        ("🔍 Search Agent", "search for latest AI developments"),
+        ("🤖 General Routing", "How can you help me with automation tasks?"),
     ]
 
     async def run_demos():
-        conversation_id = "demo_session"
-
         for title, demo_message in demos:
             click.echo(f"\n{title}")
-            click.echo("-" * 30)
+            click.echo("-" * 40)
             click.echo(f"Input: {demo_message}")
+            click.echo("🌟 Using .create() paradigm...")
 
             try:
-                result = await cli_instance.process_message(demo_message, conversation_id)
+                start_time = time.time()
+                response = await cli_instance.smart_message_routing(demo_message)
+                processing_time = time.time() - start_time
 
-                if result['success']:
-                    # Truncate long responses for demo
-                    response = result['response']
-                    if len(response) > 200:
-                        response = response[:200] + "..."
+                # Truncate long responses for demo
+                if len(response) > 300:
+                    response = response[:300] + "..."
 
-                    click.echo(f"Output: {response}")
-                    click.echo(f"Agent: {result.get('agent_id', 'unknown')}")
-                    click.echo(f"Time: {result.get('processing_time', 0):.2f}s")
-                else:
-                    click.echo(f"Error: {result.get('error', 'Unknown error')}")
+                click.echo(f"Output: {response}")
+                click.echo(f"Time: {processing_time:.2f}s")
+                click.echo(f"✅ Agent created and cleaned up automatically")
 
             except Exception as e:
                 click.echo(f"Demo error: {e}")
@@ -608,51 +560,70 @@ def demo():
 
     asyncio.run(run_demos())
 
-    click.echo(f"\n🎉 Demo completed! Try 'ambivo-agents interactive' for hands-on experience.")
+    click.echo(f"\n🎉 Demo completed!")
+    click.echo(f"🌟 All operations used the  .create() paradigm")
+    click.echo(f"💡 Each agent was created directly with explicit context")
+    click.echo(f"🧹 All sessions were automatically cleaned up")
 
 
 @cli.command()
 def examples():
-    """Show usage examples for different features"""
-    click.echo("📚 Ambivo Agents - Usage Examples")
-    click.echo("=" * 50)
+    """Show usage examples for the  .create() paradigm"""
+    click.echo("📚 Ambivo Agents -  .create() Paradigm Examples")
+    click.echo("=" * 60)
 
-    examples = {
-        "🎬 YouTube Downloads": [
-            "ambivo-agents youtube download 'https://youtube.com/watch?v=dQw4w9WgXcQ'",
-            "ambivo-agents youtube download 'https://youtube.com/watch?v=dQw4w9WgXcQ' --video",
-            "ambivo-agents youtube info 'https://youtube.com/watch?v=dQw4w9WgXcQ'",
-            "ambivo-agents youtube batch 'url1' 'url2' 'url3' --audio-only"
-        ],
-        "🎵 Media Processing": [
-            "ambivo-agents media extract-audio video.mp4 -f mp3 -q high",
-            "ambivo-agents media convert-video video.avi -f mp4 -c h264",
-        ],
-        "📚 Knowledge Base": [
-            "ambivo-agents kb ingest-file document.pdf -k company_docs",
-            "ambivo-agents kb query 'what is our return policy?' -k company_docs",
-        ],
-        "🕷️ Web Scraping": [
-            "ambivo-agents scrape url https://example.com -o scraped_data.json",
-            "ambivo-agents scrape batch 'url1' 'url2' 'url3' -o ./scraped/",
-        ],
-        "🔍 Web Search": [
-            "ambivo-agents search web 'artificial intelligence trends 2024' -n 10",
-            "ambivo-agents search news 'space exploration' -n 5",
-        ],
-        "💬 Interactive Chat": [
-            "ambivo-agents interactive",
-            "ambivo-agents chat 'Hello, how can you help me?'",
-        ]
-    }
+    click.echo(f"""
+🌟 ** PARADIGM: Direct Agent Creation**
 
-    for category, example_list in examples.items():
-        click.echo(f"\n{category}")
-        click.echo("-" * 30)
-        for example in example_list:
-            click.echo(f"  {example}")
+The  approach creates agents directly with explicit context:
 
-    click.echo(f"\n💡 Tip: Use 'ambivo-agents [command] --help' for detailed options")
+```python
+# 🌟  WAY: Direct agent creation
+from ambivo_agents import YouTubeDownloadAgent
+
+agent, context = YouTubeDownloadAgent.create(user_id="john")
+print(f"Session: {{context.session_id}}")
+print(f"User: {{context.user_id}}")
+
+result = await agent._download_youtube_audio(url)
+await agent.cleanup_session()
+```
+
+vs. service-based approach:
+
+```python
+# Service-based
+service = create_agent_service()
+result = await service.process_message(...)
+```
+
+🎯 **CLI Examples using  paradigm:**
+
+🎬 **YouTube Downloads:**
+   ambivo-agents youtube download 'https://youtube.com/watch?v=example'
+   ambivo-agents youtube info 'https://youtube.com/watch?v=example'
+
+💬 **Smart Chat Routing:**
+   ambivo-agents chat "download audio from https://youtube.com/watch?v=example"
+   ambivo-agents chat "search for artificial intelligence trends"
+   ambivo-agents chat "extract audio from video.mp4"
+
+🔄 **Interactive Mode:**
+   ambivo-agents interactive
+
+🏥 **Health Check:**
+   ambivo-agents health
+
+🎪 **Demo:**
+   ambivo-agents demo
+
+💡 **Key Benefits:**
+   ✅ Explicit context management
+   ✅ Direct agent-to-tool communication  
+   ✅ Clear session lifecycle
+   ✅ Better error handling
+   ✅ More predictable behavior
+""")
 
 
 if __name__ == '__main__':

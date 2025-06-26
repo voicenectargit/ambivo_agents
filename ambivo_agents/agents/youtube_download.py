@@ -12,6 +12,7 @@ import re
 from pathlib import Path
 from typing import Dict, List, Any, Optional
 from datetime import datetime
+import logging
 
 from ..core.base import BaseAgent, AgentRole, AgentMessage, MessageType, ExecutionContext, AgentTool
 from ..config.loader import load_config, get_config_section
@@ -21,10 +22,14 @@ from ..executors.youtube_executor import YouTubeDockerExecutor
 class YouTubeDownloadAgent(BaseAgent):
     """YouTube Download Agent for downloading videos and audio from YouTube"""
 
-    def __init__(self, agent_id: str, memory_manager, llm_service=None, **kwargs):
+    def __init__(self, agent_id: str = None, memory_manager=None, llm_service=None, **kwargs):
+        # Generate ID if not provided
+        if agent_id is None:
+            agent_id = f"youtube_{str(uuid.uuid4())[:8]}"
+
         super().__init__(
             agent_id=agent_id,
-            role=AgentRole.CODE_EXECUTOR,  # Using CODE_EXECUTOR role for media processing
+            role=AgentRole.CODE_EXECUTOR,
             memory_manager=memory_manager,
             llm_service=llm_service,
             name="YouTube Download Agent",
@@ -32,17 +37,28 @@ class YouTubeDownloadAgent(BaseAgent):
             **kwargs
         )
 
-        # Load YouTube configuration from YAML
+        # Load YouTube configuration
         try:
-            config = load_config()
-            self.youtube_config = get_config_section('youtube_download', config)
+            if hasattr(self, 'config') and self.config:
+                self.youtube_config = self.config.get('youtube_download', {})
+            else:
+                config = load_config()
+                self.youtube_config = config.get('youtube_download', {})
         except Exception as e:
-            raise ValueError(f"youtube_download configuration not found in agent_config.yaml: {e}")
+            # Provide sensible defaults if config fails
+            self.youtube_config = {
+                'docker_image': 'sgosain/amb-ubuntu-python-public-pod',
+                'download_dir': './youtube_downloads',
+                'timeout': 600,
+                'memory_limit': '1g',
+                'default_audio_only': True
+            }
+            #logging.warning(f"Using default YouTube config due to: {e}")
 
-        # Initialize YouTube Docker executor
-        self.youtube_executor = YouTubeDockerExecutor(self.youtube_config)
-
-        # Add YouTube download tools
+        # ===
+        # YouTube-specific initialization
+        self._load_youtube_config()
+        self._initialize_youtube_executor()
         self._add_youtube_tools()
 
     def _add_youtube_tools(self):
@@ -122,6 +138,89 @@ class YouTubeDownloadAgent(BaseAgent):
                 "required": ["urls"]
             }
         ))
+
+    def _load_youtube_config(self):
+        """Load YouTube configuration with fallbacks"""
+        try:
+            if hasattr(self, 'config') and self.config:
+                self.youtube_config = self.config.get('youtube_download', {})
+                logging.info("Loaded YouTube config from agent config")
+            else:
+                config = load_config()
+                self.youtube_config = config.get('youtube_download', {})
+                logging.info("Loaded YouTube config from file")
+        except Exception as e:
+            # Provide sensible defaults if config fails
+            self.youtube_config = {
+                'docker_image': 'sgosain/amb-ubuntu-python-public-pod',
+                'download_dir': './youtube_downloads',
+                'timeout': 600,
+                'memory_limit': '1g',
+                'default_audio_only': True
+            }
+            #logging.warning(f"Using default YouTube config due to: {e}")
+
+    def _initialize_youtube_executor(self):
+        """Initialize the YouTube executor"""
+        try:
+            from ..executors.youtube_executor import YouTubeDockerExecutor
+            self.youtube_executor = YouTubeDockerExecutor(self.youtube_config)
+            logging.info("YouTube executor initialized successfully")
+        except Exception as e:
+            logging.error(f"Failed to initialize YouTube executor: {e}")
+            raise RuntimeError(f"Failed to initialize YouTube executor: {e}")
+
+    @classmethod
+    def create_simple(cls, agent_id: str = None, **kwargs):
+        """
+        Create agent with auto-configuration (recommended for most users)
+
+        Args:
+            agent_id: Optional agent ID. If None, auto-generates one.
+            **kwargs: Additional arguments passed to constructor
+
+        Returns:
+            YouTubeDownloadAgent: Configured agent ready to use
+        """
+        # Auto-generate ID if not provided
+        if agent_id is None:
+            agent_id = f"youtube_{str(uuid.uuid4())[:8]}"
+
+        # Create with auto-configuration enabled
+        return cls(
+            agent_id=agent_id,
+            auto_configure=True,  # Enable auto-configuration
+            **kwargs
+        )
+
+    @classmethod
+    def create_advanced(cls,
+                        agent_id: str,
+                        memory_manager,
+                        llm_service=None,
+                        config: Dict[str, Any] = None,
+                        **kwargs):
+        """
+        Create agent with explicit dependencies (for advanced use cases)
+
+        Args:
+            agent_id: Agent identifier
+            memory_manager: Pre-configured memory manager
+            llm_service: Optional pre-configured LLM service
+            config: Optional configuration dictionary
+            **kwargs: Additional arguments passed to constructor
+
+        Returns:
+            YouTubeDownloadAgent: Agent with explicit dependencies
+        """
+        return cls(
+            agent_id=agent_id,
+            memory_manager=memory_manager,
+            llm_service=llm_service,
+            config=config,
+            auto_configure=False,  # Disable auto-config when using advanced mode
+            **kwargs
+        )
 
     async def _download_youtube(self, url: str, audio_only: bool = True, custom_filename: str = None) -> Dict[str, Any]:
         """Download video or audio from YouTube"""

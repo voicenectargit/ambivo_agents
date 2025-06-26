@@ -102,7 +102,11 @@ class SimpleDockerExecutor:
 class WebScraperAgent(BaseAgent):
     """Unified web scraper agent with proxy, Docker, and local execution modes"""
 
-    def __init__(self, agent_id: str, memory_manager, llm_service=None, **kwargs):
+    def __init__(self, agent_id: str=None, memory_manager=None, llm_service=None, **kwargs):
+
+        if agent_id is None:
+            agent_id = f"scraper_{str(uuid.uuid4())[:8]}"
+
         super().__init__(
             agent_id=agent_id,
             role=AgentRole.RESEARCHER,

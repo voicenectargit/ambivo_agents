@@ -183,7 +183,10 @@ class QdrantServiceAdapter:
 class KnowledgeBaseAgent(BaseAgent):
     """Knowledge Base Agent that integrates with Qdrant infrastructure"""
 
-    def __init__(self, agent_id: str, memory_manager, llm_service=None, **kwargs):
+    def __init__(self, agent_id: str|None=None, memory_manager=None, llm_service=None, **kwargs):
+        if agent_id is None:
+            agent_id = f"kb_{str(uuid.uuid4())[:8]}"
+
         super().__init__(
             agent_id=agent_id,
             role=AgentRole.RESEARCHER,
@@ -369,6 +372,27 @@ class KnowledgeBaseAgent(BaseAgent):
         except Exception as e:
             return {"success": False, "error": str(e)}
 
+    async def get_answer(self, kb_name: str, query: str, question_type: str = "free-text"):
+        """Get answer from knowledge base"""
+        try:
+            # Use existing conduct_query method
+            answer, ans_dict_list = self.qdrant_service.conduct_query(
+                query=query,
+                kb_name=kb_name,
+                question_type=question_type
+            )
+
+            return {
+                "success": True,
+                "answer": answer,
+                # "source_details": ans_dict_list,
+                # "kb_name": kb_name,
+                # "query": query,
+                # "question_type": question_type
+            }
+
+        except Exception as e:
+            return {"success": False, "error": str(e)}
     async def _query_knowledge_base(self, kb_name: str, query: str, question_type: str = "free-text",
                                     option_list: List[str] = None, additional_prompt: str = None) -> Dict[str, Any]:
         """Query the knowledge base"""

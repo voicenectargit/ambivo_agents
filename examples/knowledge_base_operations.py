@@ -50,7 +50,7 @@ class KnowledgeBaseDemo:
         # Setup directories
         self.setup_directories()
 
-        # DIRECT KB AGENT CREATION (bypass routing issues)
+
         self.kb_agent = None
         self.llm_service = None
 

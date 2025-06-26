@@ -4,6 +4,7 @@ Assistant Agent for general purpose assistance.
 """
 
 import logging
+import uuid
 from typing import Dict, Any
 
 from ..core.base import BaseAgent, AgentRole, AgentMessage, MessageType, ExecutionContext
@@ -12,7 +13,10 @@ from ..core.base import BaseAgent, AgentRole, AgentMessage, MessageType, Executi
 class AssistantAgent(BaseAgent):
     """General purpose assistant agent"""
 
-    def __init__(self, agent_id: str, memory_manager, llm_service=None, **kwargs):
+    def __init__(self, agent_id: str| None = None, memory_manager=None, llm_service=None, **kwargs):
+        if agent_id is None:
+            agent_id = f"assistant_{str(uuid.uuid4())[:8]}"
+
         super().__init__(
             agent_id=agent_id,
             role=AgentRole.ASSISTANT,

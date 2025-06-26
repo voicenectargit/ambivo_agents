@@ -23,7 +23,10 @@ from ..executors.media_executor import MediaDockerExecutor
 class MediaEditorAgent(BaseAgent):
     """Media Editor Agent for audio/video processing using FFmpeg"""
 
-    def __init__(self, agent_id: str, memory_manager, llm_service=None, **kwargs):
+    def __init__(self, agent_id: str| None = None, memory_manager=None, llm_service=None, **kwargs):
+        if agent_id is None:
+            agent_id = f"media_editor_{str(uuid.uuid4())[:8]}"
+
         super().__init__(
             agent_id=agent_id,
             role=AgentRole.CODE_EXECUTOR,  # Using CODE_EXECUTOR role for media processing

@@ -7,7 +7,8 @@ from .base import (
     ExecutionContext,
     BaseAgent,
     ProviderConfig,
-    ProviderTracker
+    ProviderTracker,
+    AgentSession
 )
 from .memory import MemoryManagerInterface, RedisMemoryManager, create_redis_memory_manager
 from .llm import LLMServiceInterface, MultiProviderLLMService, create_multi_provider_llm_service
@@ -26,6 +27,7 @@ __all__ = [
     "create_redis_memory_manager",
     "LLMServiceInterface",
     "MultiProviderLLMService",
-    "create_multi_provider_llm_service"
+    "create_multi_provider_llm_service",
+    "AgentSession"
 ]
 

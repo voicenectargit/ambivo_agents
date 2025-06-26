@@ -7,6 +7,8 @@ Reports search provider information clearly
 import asyncio
 import json
 import time
+import uuid
+
 import requests
 import logging
 from typing import Dict, List, Any, Optional
@@ -31,7 +33,10 @@ class SearchResult:
 class SimpleWebSearchAgent(BaseAgent):
     """Simple, targeted web search agent with clear provider reporting"""
 
-    def __init__(self, agent_id: str, memory_manager, llm_service=None, **kwargs):
+    def __init__(self, agent_id: str=None, memory_manager=None, llm_service=None, **kwargs):
+        if agent_id is None:
+            agent_id = f"search_{str(uuid.uuid4())[:8]}"
+
         super().__init__(
             agent_id=agent_id,
             role=AgentRole.RESEARCHER,

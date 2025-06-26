@@ -4,6 +4,7 @@ Code Executor Agent for running code in secure Docker containers.
 """
 
 import logging
+import uuid
 from typing import Dict, Any
 
 from ..core.base import BaseAgent, AgentRole, AgentMessage, MessageType, ExecutionContext, AgentTool, DockerCodeExecutor
@@ -13,7 +14,10 @@ from ..config.loader import load_config, get_config_section
 class CodeExecutorAgent(BaseAgent):
     """Agent specialized in code execution"""
 
-    def __init__(self, agent_id: str, memory_manager, llm_service=None, **kwargs):
+    def __init__(self, agent_id: str=None, memory_manager=None, llm_service=None, **kwargs):
+        if agent_id is None:
+            agent_id = f"code_executor_{str(uuid.uuid4())[:8]}"
+
         super().__init__(
             agent_id=agent_id,
             role=AgentRole.CODE_EXECUTOR,

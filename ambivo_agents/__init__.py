@@ -15,7 +15,8 @@ from .core.base import (
     ExecutionContext,
     BaseAgent,
     ProviderConfig,
-    ProviderTracker
+    ProviderTracker,
+    AgentSession
 )
 
 from .core.memory import (
@@ -41,6 +42,7 @@ from .agents.knowledge_base import KnowledgeBaseAgent
 from .agents.web_search import WebSearchAgent
 from .agents.web_scraper import WebScraperAgent
 from .agents.media_editor import MediaEditorAgent
+from .agents.youtube_download import YouTubeDownloadAgent
 
 # Configuration
 from .config.loader import load_config, ConfigurationError
@@ -55,6 +57,7 @@ __all__ = [
     "BaseAgent",
     "ProviderConfig",
     "ProviderTracker",
+    "AgentSession",
 
     # Memory
     "MemoryManagerInterface",
@@ -78,6 +81,7 @@ __all__ = [
     "WebSearchAgent",
     "WebScraperAgent",
     "MediaEditorAgent",
+    "YouTubeDownloadAgent",
 
     # Configuration
     "load_config",

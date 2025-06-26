@@ -2,6 +2,33 @@
 
 A comprehensive toolkit for AI-powered automation including media processing, knowledge base operations, web scraping, YouTube downloads, and more.
 
+## 🌟  Direct Agent Creation Paradigm
+
+**Ambivo Agents now features a revolutionary `.create()` paradigm** that provides explicit context management and direct agent-to-tool communication:
+
+```python
+# 🌟 RECOMMENDED APPROACH
+from ambivo_agents import YouTubeDownloadAgent, KnowledgeBaseAgent
+
+# Create agent with explicit context
+agent, context = YouTubeDownloadAgent.create(user_id="john")
+print(f"Session: {context.session_id}")
+print(f"User: {context.user_id}")
+
+# Use agent directly
+result = await agent._download_youtube_audio("https://youtube.com/watch?v=example")
+
+# Cleanup when done
+await agent.cleanup_session()
+```
+
+**Benefits of the approach:**
+- ✅ **Explicit Context**: Session IDs, user IDs, and metadata are always visible
+- ✅ **Direct Communication**: No service layer - talk directly to agents
+- ✅ **Better Control**: Full lifecycle management of agents and sessions
+- ✅ **Cleaner Code**: More predictable and easier to debug
+- ✅ **Built-in Memory**: Conversation history built into every agent
+
 ## 🚀 Features
 
 ### Core Capabilities
@@ -10,6 +37,7 @@ A comprehensive toolkit for AI-powered automation including media processing, kn
 - **Redis Memory Management**: Persistent conversation memory with compression and caching
 - **Multi-Provider LLM Support**: Automatic failover between OpenAI, Anthropic, and AWS Bedrock
 - **Configuration-Driven**: All features controlled via `agent_config.yaml`
+- **🌟 Direct Agent Creation**:  `.create()` paradigm with explicit context management
 
 ### Available Agents
 
@@ -25,7 +53,7 @@ A comprehensive toolkit for AI-powered automation including media processing, kn
 
 #### 🔍 Web Search Agent
 - Multi-provider search (Brave, AVES APIs)
-- News and academic search capabilities
+- s and academic search capabilities
 - Automatic provider failover
 
 #### 🕷️ Web Scraper Agent
@@ -43,7 +71,7 @@ A comprehensive toolkit for AI-powered automation including media processing, kn
 - Format conversion, resizing, trimming
 - Audio extraction and volume adjustment
 
-#### 🎬 YouTube Download Agent *(New!)*
+#### 🎬 YouTube Download Agent
 - Download videos and audio from YouTube
 - Docker-based execution with pytubefix
 - Automatic title sanitization and metadata extraction
@@ -51,7 +79,7 @@ A comprehensive toolkit for AI-powered automation including media processing, kn
 ## 📋 Prerequisites
 
 ### Required
-- **Python 3.8+**
+- **Python 3.11+**
 - **Docker** (for code execution, media processing, YouTube downloads)
 - **Redis** (for memory management)
 
@@ -133,13 +161,16 @@ llm:
 
 # Agent Capabilities (Enable/disable features)
 agent_capabilities:
-  enable_web_search: true
-  enable_web_scraping: true  
   enable_knowledge_base: true
+  enable_web_search: true
+  enable_code_execution: true
+  enable_file_processing: true
+  enable_web_ingestion: true
+  enable_api_calls: true
+  enable_web_scraping: true
+  enable_proxy_mode: true
   enable_media_editor: true
   enable_youtube_download: true
-  enable_code_execution: true
-  enable_proxy_mode: true
 
 # Web Search Configuration (if enabled)
 web_search:
@@ -206,124 +237,238 @@ memory_management:
 
 ## 🚀 Quick Start
 
+### 🌟  Python API (RECOMMENDED)
+
+```python
+from ambivo_agents import YouTubeDownloadAgent, KnowledgeBaseAgent, WebSearchAgent
+import asyncio
+
+async def main():
+    # 🌟  Direct agent creation with explicit context
+    agent, context = YouTubeDownloadAgent.create(user_id="john")
+    
+    print(f"✅ Agent: {agent.agent_id}")
+    print(f"📋 Session: {context.session_id}")
+    print(f"👤 User: {context.user_id}")
+    
+    # Download audio from YouTube
+    result = await agent._download_youtube_audio(
+        "https://youtube.com/watch?v=dQw4w9WgXcQ"
+    )
+    
+    if result['success']:
+        print(f"✅ Downloaded: {result['filename']}")
+    
+    # Cleanup when done
+    await agent.cleanup_session()
+
+# Run
+asyncio.run(main())
+```
+
+### Context Manager Pattern (Auto-Cleanup)
+
+```python
+from ambivo_agents import KnowledgeBaseAgent, AgentSession
+import asyncio
+
+async def main():
+    # 🔄 Auto-cleanup with context manager
+    async with AgentSession(KnowledgeBaseAgent, user_id="sarah") as agent:
+        print(f"Session: {agent.context.session_id}")
+        
+        # Use agent - cleanup happens automatically
+        result = await agent._query_knowledge_base(
+            kb_name="company_docs",
+            query="What is our return policy?"
+        )
+        
+        print(result['answer'])
+    # Agent automatically cleaned up here
+
+asyncio.run(main())
+```
+
 ### Command Line Interface
 
 ```bash
 # Install the CLI
 pip install ambivo-agents
 
-# Health check
+# Health check using  paradigm
 ambivo-agents health
 
-# Interactive chat mode
+# Interactive chat mode with smart routing
 ambivo-agents interactive
 
-# Single message
-ambivo-agents chat "Hello, how can you help me?"
+# Direct YouTube download
+ambivo-agents youtube download "https://youtube.com/watch?v=dQw4w9WgXcQ"
 
-# Media processing
-ambivo-agents media extract-audio input.mp4 --output-format mp3
-
-# Knowledge base operations  
-ambivo-agents kb ingest-file document.pdf --kb-name my_docs
-
-# Web scraping
-ambivo-agents scrape url https://example.com --output results.json
-```
-
-### Python API
-
-```python
-from ambivo_agents.services import create_agent_service
-import asyncio
-
-async def main():
-    # Create agent service
-    service = create_agent_service()
-    
-    # Create session
-    session_id = service.create_session()
-    
-    # Process message
-    result = await service.process_message(
-        message="Download the audio from https://youtube.com/watch?v=example",
-        session_id=session_id,
-        user_id="user123"
-    )
-    
-    print(result['response'])
-
-# Run
-asyncio.run(main())
+# Smart message routing
+ambivo-agents chat "download audio from https://youtube.com/watch?v=example"
+ambivo-agents chat "search for latest AI trends"
+ambivo-agents chat "extract audio from video.mp4"
 ```
 
 ## 📖 Usage Examples
 
-### YouTube Downloads
-```bash
-# Download audio from YouTube
-ambivo-agents chat "Download audio from https://youtube.com/watch?v=dQw4w9WgXcQ"
+### 🎬 YouTube Downloads ( Direct Approach)
+```python
+from ambivo_agents import YouTubeDownloadAgent
 
-# Download video 
-ambivo-agents chat "Download video from https://youtube.com/watch?v=dQw4w9WgXcQ in highest quality"
+async def download_youtube():
+    agent, context = YouTubeDownloadAgent.create(user_id="media_user")
+    
+    # Download audio
+    result = await agent._download_youtube_audio(
+        "https://youtube.com/watch?v=dQw4w9WgXcQ"
+    )
+    
+    if result['success']:
+        print(f"✅ Audio downloaded: {result['filename']}")
+        print(f"📍 Path: {result['file_path']}")
+        print(f"📊 Size: {result['file_size_bytes']:,} bytes")
+    
+    # Get video info
+    info = await agent._get_youtube_info(
+        "https://youtube.com/watch?v=dQw4w9WgXcQ"
+    )
+    
+    if info['success']:
+        video_info = info['video_info']
+        print(f"📹 Title: {video_info['title']}")
+        print(f"⏱️ Duration: {video_info['duration']} seconds")
+    
+    await agent.cleanup_session()
 ```
 
-### Media Processing
-```bash
-# Extract audio from video
-ambivo-agents chat "Extract audio from /path/to/video.mp4 as high quality mp3"
+### 📚 Knowledge Base Operations ( Direct Approach)
+```python
+from ambivo_agents import KnowledgeBaseAgent
 
-# Convert video format
-ambivo-agents chat "Convert /path/to/video.avi to mp4 with h264 codec"
-
-# Create thumbnail
-ambivo-agents chat "Create thumbnail from /path/to/video.mp4 at 00:05:00"
+async def knowledge_base_demo():
+    agent, context = KnowledgeBaseAgent.create(
+        user_id="kb_user",
+        session_metadata={"project": "company_docs"}
+    )
+    
+    print(f"Session: {context.session_id}")
+    
+    # Ingest document
+    result = await agent._ingest_document(
+        kb_name="company_kb",
+        doc_path="/path/to/document.pdf",
+        custom_meta={"department": "HR", "type": "policy"}
+    )
+    
+    if result['success']:
+        print("✅ Document ingested")
+        
+        # Query the knowledge base
+        answer = await agent._query_knowledge_base(
+            kb_name="company_kb",
+            query="What is the remote work policy?"
+        )
+        
+        if answer['success']:
+            print(f"📝 Answer: {answer['answer']}")
+    
+    # View conversation history
+    history = await agent.get_conversation_history(limit=5)
+    print(f"💬 Messages in session: {len(history)}")
+    
+    await agent.cleanup_session()
 ```
 
-### Knowledge Base Operations
-```bash
-# Ingest documents
-ambivo-agents chat "Ingest document /path/to/manual.pdf into knowledge base 'company_docs'"
+### 🔍 Web Search ( Direct Approach)
+```python
+from ambivo_agents import WebSearchAgent
 
-# Query knowledge base
-ambivo-agents chat "Query knowledge base 'company_docs': What is the return policy?"
+async def search_demo():
+    agent, context = WebSearchAgent.create(user_id="search_user")
+    
+    # Search the web
+    results = await agent._search_web(
+        "artificial intelligence trends 2024",
+        max_results=5
+    )
+    
+    if results['success']:
+        print(f"🔍 Found {len(results['results'])} results")
+        
+        for i, result in enumerate(results['results'], 1):
+            print(f"{i}. {result['title']}")
+            print(f"   {result['url']}")
+            print(f"   {result['snippet'][:100]}...")
+    
+    await agent.cleanup_session()
 ```
 
-### Web Search & Scraping
-```bash
-# Web search
-ambivo-agents chat "search for latest AI trends 2024"
+### 🎵 Media Processing ( Direct Approach)
+```python
+from ambivo_agents import MediaEditorAgent
 
-# Web scraping
-ambivo-agents chat "scrape https://example.com and extract all links"
+async def media_demo():
+    agent, context = MediaEditorAgent.create(user_id="media_user")
+    
+    # Extract audio from video
+    result = await agent._extract_audio_from_video(
+        input_video="/path/to/video.mp4",
+        output_format="mp3",
+        audio_quality="high"
+    )
+    
+    if result['success']:
+        print(f"✅ Audio extracted: {result['output_file']}")
+    
+    await agent.cleanup_session()
 ```
 
-### Code Execution
+### Command Line Examples
 ```bash
-# Python code
-ambivo-agents chat "```python\nprint('Hello World')\nimport math\nprint(math.pi)\n```"
+# YouTube Downloads
+ambivo-agents youtube download "https://youtube.com/watch?v=dQw4w9WgXcQ" --audio-only
+ambivo-agents youtube download "https://youtube.com/watch?v=dQw4w9WgXcQ" --video
+ambivo-agents youtube info "https://youtube.com/watch?v=dQw4w9WgXcQ"
 
-# Bash commands  
-ambivo-agents chat "```bash\nls -la\ndf -h\n```"
+# Smart Chat (automatically routes to appropriate agent)
+ambivo-agents chat "download audio from https://youtube.com/watch?v=dQw4w9WgXcQ"
+ambivo-agents chat "search for latest AI developments"
+ambivo-agents chat "extract audio from video.mp4 as high quality mp3"
+
+# Interactive mode with smart routing
+ambivo-agents interactive
 ```
 
 ## 🔧 Architecture
 
-### Agent Routing
-The system uses a **Proxy Agent** that intelligently routes messages to specialized agents based on content analysis:
+### 🌟  Direct Agent Creation
+The  paradigm eliminates the service layer and creates agents directly:
 
-- **YouTube keywords** → YouTube Download Agent
-- **Media keywords** → Media Editor Agent  
-- **Search keywords** → Web Search Agent
-- **Scraping keywords** → Web Scraper Agent
-- **Knowledge keywords** → Knowledge Base Agent
-- **Code blocks** → Code Executor Agent
-- **General queries** → Assistant Agent
+```python
+# 🌟  Direct creation with explicit context
+agent, context = YouTubeDownloadAgent.create(user_id="john")
+
+# Service-based approach
+service = create_agent_service()
+result = await service.process_message(...)
+```
+
+### Agent Capabilities
+Each agent provides specialized functionality:
+
+- **YouTube Download Agent** → Video/audio downloads with pytubefix
+- **Media Editor Agent** → FFmpeg-based processing
+- **Knowledge Base Agent** → Qdrant vector search
+- **Web Search Agent** → Multi-provider search
+- **Web Scraper Agent** → Proxy-enabled scraping
+- **Code Executor Agent** → Docker-based execution
 
 ### Memory System
 - **Redis-based persistence** with compression and caching
-- **Conversation-aware context** with TTL management
-- **Multi-session support** with automatic cleanup
+- **Built-in conversation history** for every agent
+- **Session-aware context** with automatic cleanup
+- **Multi-session support** with isolation
 
 ### LLM Provider Management
 - **Automatic failover** between OpenAI, Anthropic, AWS Bedrock
@@ -369,15 +514,22 @@ The agents automatically handle volume mounting for:
    # Install if missing: https://docs.docker.com/get-docker/
    ```
 
-3. **Agent Not Found Errors**
-   - Verify the feature is enabled in `agent_capabilities`
-   - Check that required configuration sections exist
-   - Ensure API keys are properly set
+3. **Agent Creation Errors**
+   ```python
+   # Check agent can be created
+   from ambivo_agents import YouTubeDownloadAgent
+   try:
+       agent, context = YouTubeDownloadAgent.create(user_id="test")
+       print(f"✅ Success: {context.session_id}")
+       await agent.cleanup_session()
+   except Exception as e:
+       print(f"❌ Error: {e}")
+   ```
 
-4. **Module Import Errors**
+4. **Import Errors**
    ```bash
-   # Install missing dependencies
-   pip install missing-package
+   # Ensure clean imports work
+   python -c "from ambivo_agents import YouTubeDownloadAgent; print('✅ Import success')"
    ```
 
 ### Debug Mode
@@ -388,6 +540,42 @@ service:
   log_to_file: true
 ```
 
+## 🔄 Migration from Service-Based to Direct Agent Creation
+
+### Before (Service-Based)
+```python
+from ambivo_agents.services import create_agent_service
+
+service = create_agent_service()
+session_id = service.create_session()
+
+result = await service.process_message(
+    message="download audio from youtube.com/watch?v=example",
+    session_id=session_id,
+    user_id="user123"
+)
+```
+
+### After ( Direct Agent Creation)
+```python
+from ambivo_agents import YouTubeDownloadAgent
+
+agent, context = YouTubeDownloadAgent.create(user_id="user123")
+
+result = await agent._download_youtube_audio(
+    "https://youtube.com/watch?v=example"
+)
+
+await agent.cleanup_session()
+```
+
+### Benefits of Migration
+- ✅ **Explicit Context**: Always know your session ID and user context
+- ✅ **Direct Control**: No hidden service layer
+- ✅ **Better Debugging**: Clear error messages and stack traces
+- ✅ **Type Safety**: Direct method calls with proper typing
+- ✅ **Performance**: No routing overhead
+
 ## 🔐 Security Considerations
 
 - **Docker Isolation**: All code execution happens in isolated containers
@@ -395,6 +583,7 @@ service:
 - **Resource Limits**: Memory and CPU limits prevent resource exhaustion  
 - **API Key Management**: Store sensitive keys in environment variables
 - **Input Sanitization**: All user inputs are validated and sanitized
+- **Session Isolation**: Each agent session is completely isolated
 
 ## 🤝 Contributing
 
@@ -408,6 +597,13 @@ cd ambivo-agents
 
 # Install in development mode
 pip install -e .
+
+# Test the  paradigm
+python -c "
+from ambivo_agents import YouTubeDownloadAgent
+agent, context = YouTubeDownloadAgent.create_simple(user_id='test')
+print(f'✅  paradigm working: {context.session_id}')
+"
 
 # Run tests
 pytest tests/
@@ -435,4 +631,4 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ---
 
-*Built with 🛡 by the Ambivo team*
+*Built with ❤️ by the Ambivo team using the  .create() paradigm*
