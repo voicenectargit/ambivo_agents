@@ -631,4 +631,4 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ---
 
-*Built with ❤️ by the Ambivo team using the  .create() paradigm*
+*Built with 🛡️ by the Ambivo team using the *
