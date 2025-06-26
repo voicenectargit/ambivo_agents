@@ -540,9 +540,9 @@ service:
   log_to_file: true
 ```
 
-## 🔄 Migration from Service-Based to Direct Agent Creation
 
-### Before (Service-Based)
+
+### Service-Based
 ```python
 from ambivo_agents.services import create_agent_service
 
@@ -556,7 +556,7 @@ result = await service.process_message(
 )
 ```
 
-### After ( Direct Agent Creation)
+### Direct Agent Creation
 ```python
 from ambivo_agents import YouTubeDownloadAgent
 
@@ -593,23 +593,16 @@ We welcome contributions! Please see our [Contributing Guidelines](CONTRIBUTING.
 ```bash
 # Clone repository
 git clone https://github.com/ambivo/ambivo-agents.git
-cd ambivo-agents
+cd ambivo-agents # project root
+# make sure you have ambiv-agents.yaml in project root.
 
 # Install in development mode
 pip install -e .
 
-# Test the  paradigm
-python -c "
-from ambivo_agents import YouTubeDownloadAgent
-agent, context = YouTubeDownloadAgent.create_simple(user_id='test')
-print(f'✅  paradigm working: {context.session_id}')
-"
 
-# Run tests
-pytest tests/
+python examples/<example.py>  # Run any example script
 
-# Type checking
-mypy ambivo_agents/
+
 ```
 
 ## 📄 License
@@ -631,4 +624,4 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ---
 
-*Built with 🛡️ by the Ambivo team using the *
+*Built with 🛡️ by the Ambivo team.
