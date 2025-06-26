@@ -594,7 +594,7 @@ We welcome contributions! Please see our [Contributing Guidelines](CONTRIBUTING.
 # Clone repository
 git clone https://github.com/ambivo/ambivo-agents.git
 cd ambivo-agents # project root
-# make sure you have ambiv-agents.yaml in project root.
+# make sure you have ambivo-agents.yaml with the relevant keys/secrets in the project root.
 
 # Install in development mode
 pip install -e .
