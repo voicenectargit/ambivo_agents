@@ -330,6 +330,8 @@ class BaseAgent(ABC):
                  name: str = None,
                  description: str = None,
                  auto_configure: bool = True,
+                 session_id: str = None,
+                 conversation_id: str = None,
                  **kwargs):
 
         # Auto-generate agent_id if not provided
@@ -352,8 +354,10 @@ class BaseAgent(ABC):
 
         self.config = config or {}
 
-        # 🚀 AUTO-CREATE CONTEXT - This is the key enhancement!
-        self.context = self._create_agent_context(user_id, tenant_id, session_metadata)
+        self.context = self._create_agent_context(user_id, tenant_id,
+                                                  session_metadata,
+                                                  session_id,
+                                                  conversation_id)
 
         # Auto-configure memory if not provided and auto-configure is enabled
         if memory_manager is None and auto_configure:
@@ -396,23 +400,33 @@ class BaseAgent(ABC):
     def _create_agent_context(self,
                               user_id: str = None,
                               tenant_id: str = "default",
-                              session_metadata: Dict[str, Any] = None) -> AgentContext:
+                              session_metadata: Dict[str, Any] = None,
+                              session_id: str = None,
+                              conversation_id: str = None
+                              ) -> AgentContext:
         """Create auto-context for this agent instance"""
 
         # Auto-generate user_id if not provided
         if user_id is None:
             user_id = f"user_{str(uuid.uuid4())[:8]}"
 
+        if session_id and conversation_id:
+            final_session_id = session_id
+            final_conversation_id = conversation_id
+        else:
+            final_session_id = f"session_{str(uuid.uuid4())[:8]}"
+            final_conversation_id = f"conv_{str(uuid.uuid4())[:8]}"
+
         return AgentContext(
-            session_id=f"session_{str(uuid.uuid4())[:8]}",
-            conversation_id=f"conv_{str(uuid.uuid4())[:8]}",
+            session_id=final_session_id,
+            conversation_id=final_conversation_id,
             user_id=user_id,
             tenant_id=tenant_id,
             agent_id=self.agent_id,
             metadata=session_metadata or {}
         )
 
-    # 🎯 ENHANCED FACTORY METHODS
+
 
     @classmethod
     def create(cls,
@@ -420,6 +434,8 @@ class BaseAgent(ABC):
                user_id: str = None,
                tenant_id: str = "default",
                session_metadata: Dict[str, Any] = None,
+               session_id: str = None,
+               conversation_id: str = None,
                **kwargs) -> Tuple['BaseAgent', AgentContext]:
         """
         🌟 DEFAULT: Create agent and return both agent and context
@@ -438,6 +454,8 @@ class BaseAgent(ABC):
             user_id=user_id,
             tenant_id=tenant_id,
             session_metadata=session_metadata,
+            session_id=session_id,
+            conversation_id=conversation_id,
             auto_configure=True,
             **kwargs
         )
@@ -713,9 +731,11 @@ class BaseAgent(ABC):
             session_id = self.context.session_id
 
             # Clear memory for this session
+
             if hasattr(self, 'memory') and self.memory:
                 try:
-                    self.memory.clear_memory(self.context.conversation_id)
+                    # Hack temporraily commented memmort
+                    #self.memory.clear_memory(self.context.conversation_id)
                     logging.info(f"🧹 Cleared memory for session {session_id}")
                 except Exception as e:
                     logging.warning(f"⚠️  Could not clear memory: {e}")

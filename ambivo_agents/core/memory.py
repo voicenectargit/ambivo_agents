@@ -1,6 +1,7 @@
 # ambivo_agents/core/memory.py
 """
 Memory management system for ambivo_agents.
+FIXED: Redis key consistency issue for session history retrieval
 """
 
 import json
@@ -226,7 +227,7 @@ class IntelligentCache:
 
 
 class RedisMemoryManager(MemoryManagerInterface):
-    """Redis memory manager with UTF-8 handling and configuration from YAML"""
+    """Redis memory manager with session-based keys and UTF-8 handling - FIXED KEY CONSISTENCY"""
 
     def __init__(self, agent_id: str, redis_config: Dict[str, Any] = None):
         self.agent_id = agent_id
@@ -280,6 +281,44 @@ class RedisMemoryManager(MemoryManagerInterface):
         except Exception as e:
             raise ConnectionError(f"Failed to connect to Redis: {e}")
 
+    def _get_primary_identifier(self, session_id: str = None, conversation_id: str = None) -> str:
+        """
+        FIXED: Get consistent primary identifier for key generation
+        Priority: conversation_id > session_id > agent_id
+        """
+        if conversation_id:
+            return conversation_id
+        elif session_id:
+            return session_id
+        else:
+            return self.agent_id
+
+    def _get_message_key(self, session_id: str = None, conversation_id: str = None) -> str:
+        """
+        FIXED: Generate consistent message key
+        Uses the same primary identifier logic for both storage and retrieval
+        """
+        primary_id = self._get_primary_identifier(session_id, conversation_id)
+
+        # Always use session: prefix for session/conversation IDs
+        if primary_id != self.agent_id:
+            return f"session:{primary_id}:messages"
+        else:
+            # Fallback to agent-based key only when no session info
+            return f"agent:{primary_id}:messages"
+
+    def _get_context_key(self, session_id: str = None, conversation_id: str = None) -> str:
+        """
+        FIXED: Generate consistent context key
+        Uses the same primary identifier logic
+        """
+        primary_id = self._get_primary_identifier(session_id, conversation_id)
+
+        if primary_id != self.agent_id:
+            return f"session:{primary_id}:context"
+        else:
+            return f"agent:{primary_id}:context"
+
     def _safe_serialize(self, obj: Any) -> str:
         """Safely serialize object to JSON with UTF-8 handling"""
         try:
@@ -302,53 +341,82 @@ class RedisMemoryManager(MemoryManagerInterface):
             return {"error": "deserialization_failed", "data": str(data)[:100]}
 
     def store_message(self, message):
-        """Store message with safe encoding and caching"""
+        """FIXED: Store message with consistent key generation"""
         try:
-            key = f"agent:{self.agent_id}:messages"
-            if hasattr(message, 'conversation_id') and message.conversation_id:
-                key = f"{key}:{message.conversation_id}"
+            # Extract session/conversation info from message
+            session_id = getattr(message, 'session_id', None)
+            conversation_id = getattr(message, 'conversation_id', None)
+
+            # FIXED: Use consistent key generation
+            key = self._get_message_key(session_id, conversation_id)
 
             message_data = self._safe_serialize(message.to_dict() if hasattr(message, 'to_dict') else message)
 
             self.redis_client.lpush(key, message_data)
             self.redis_client.expire(key, 30 * 24 * 3600)  # 30 days TTL
 
+            # Cache the latest message
             self.cache.set(f"recent_msg:{key}", message_data)
             self.stats.total_operations += 1
+
+            # Enhanced debug logging
+            logging.debug(f"STORED message - Key: {key}")
+            logging.debug(f"  session_id: {session_id}, conversation_id: {conversation_id}")
+            logging.debug(f"  primary_id: {self._get_primary_identifier(session_id, conversation_id)}")
 
         except Exception as e:
             logging.error(f"Error storing message: {e}")
             self.stats.error_count += 1
 
     def get_recent_messages(self, limit: int = 10, conversation_id: Optional[str] = None):
-        """Get recent messages with safe encoding and caching"""
+        """FIXED: Get recent messages with proper message ordering and error handling"""
         try:
-            key = f"agent:{self.agent_id}:messages"
-            if conversation_id:
-                key = f"{key}:{conversation_id}"
+            # Generate key using fixed logic
+            key = self._get_message_key(conversation_id, conversation_id)
 
-            cache_key = f"recent_msg:{key}"
-            cached_messages = self.cache.get(cache_key)
-            if cached_messages:
-                self.stats.cache_hits += 1
-                if isinstance(cached_messages, str):
-                    return [self._safe_deserialize(cached_messages)]
+            # Enhanced debug logging
+            logging.debug(f"RETRIEVING MESSAGES from key: {key}")
+            logging.debug(f"  conversation_id: {conversation_id}, limit: {limit}")
 
-            self.stats.cache_misses += 1
+            # Check if key exists
+            key_exists = self.redis_client.exists(key)
+            if not key_exists:
+                logging.debug(f"  Key {key} does not exist")
+                return []
 
+            total_messages = self.redis_client.llen(key)
+            logging.debug(f"  Total messages in Redis: {total_messages}")
+
+            # Skip cache and go directly to Redis
             message_data_list = self.redis_client.lrange(key, 0, limit - 1)
+            logging.debug(f"  Retrieved {len(message_data_list)} raw items from Redis")
+
             messages = []
 
-            for message_data in reversed(message_data_list):
+            # Process all messages (don't reverse yet)
+            for i, message_data in enumerate(message_data_list):
                 try:
+                    logging.debug(f"  Processing message {i + 1}: {str(message_data)[:50]}...")
+
+                    # Deserialize message
                     data = self._safe_deserialize(message_data)
-                    messages.append(data)
+
+                    if isinstance(data, dict) and 'content' in data:
+                        logging.debug(
+                            f"    ✅ Valid message: {data.get('message_type')} - {data.get('content')[:30]}...")
+                        messages.append(data)
+                    else:
+                        logging.warning(f"    ⚠️ Invalid message format: {type(data)}")
+
                 except Exception as e:
-                    logging.error(f"Error parsing message: {e}")
+                    logging.error(f"  ❌ Error parsing message {i + 1}: {e}")
                     continue
 
-            if messages:
-                self.cache.set(cache_key, message_data_list[0] if message_data_list else "")
+            # CRITICAL FIX: Reverse to get chronological order (oldest first)
+            # LPUSH stores newest first, so we need to reverse for proper conversation flow
+            messages.reverse()
+
+            logging.debug(f"  ✅ Returning {len(messages)} messages in chronological order")
 
             self.stats.total_operations += 1
             return messages
@@ -359,11 +427,9 @@ class RedisMemoryManager(MemoryManagerInterface):
             return []
 
     def store_context(self, key: str, value: Any, conversation_id: Optional[str] = None):
-        """Store context with safe encoding and caching"""
+        """FIXED: Store context with consistent keys"""
         try:
-            redis_key = f"agent:{self.agent_id}:context"
-            if conversation_id:
-                redis_key = f"{redis_key}:{conversation_id}"
+            redis_key = self._get_context_key(conversation_id, conversation_id)
 
             value_json = self._safe_serialize(value)
 
@@ -378,11 +444,9 @@ class RedisMemoryManager(MemoryManagerInterface):
             self.stats.error_count += 1
 
     def get_context(self, key: str, conversation_id: Optional[str] = None):
-        """Get context with safe encoding and caching"""
+        """FIXED: Get context with consistent keys"""
         try:
-            redis_key = f"agent:{self.agent_id}:context"
-            if conversation_id:
-                redis_key = f"{redis_key}:{conversation_id}"
+            redis_key = self._get_context_key(conversation_id, conversation_id)
 
             cache_key = f"ctx:{redis_key}:{key}"
             cached_value = self.cache.get(cache_key)
@@ -407,19 +471,30 @@ class RedisMemoryManager(MemoryManagerInterface):
             return None
 
     def clear_memory(self, conversation_id: Optional[str] = None):
-        """Clear memory safely"""
+        """FIXED: Clear memory with consistent keys"""
         try:
             if conversation_id:
-                message_key = f"agent:{self.agent_id}:messages:{conversation_id}"
-                context_key = f"agent:{self.agent_id}:context:{conversation_id}"
+                # Clear specific session
+                message_key = self._get_message_key(conversation_id, conversation_id)
+                context_key = self._get_context_key(conversation_id, conversation_id)
                 deleted_count = self.redis_client.delete(message_key, context_key)
+
+                logging.debug(f"Cleared memory for conversation {conversation_id}: {deleted_count} keys deleted")
             else:
-                pattern = f"agent:{self.agent_id}:*"
-                keys = self.redis_client.keys(pattern)
-                if keys:
-                    deleted_count = self.redis_client.delete(*keys)
+                # Clear all agent keys
+                agent_pattern = f"agent:{self.agent_id}:*"
+                session_pattern = f"session:*"
+
+                agent_keys = self.redis_client.keys(agent_pattern)
+                session_keys = self.redis_client.keys(session_pattern)
+
+                all_keys = agent_keys + session_keys
+                if all_keys:
+                    deleted_count = self.redis_client.delete(*all_keys)
                 else:
                     deleted_count = 0
+
+                logging.debug(f"Cleared all memory: {deleted_count} keys deleted")
 
             self.cache.clear()
             self.stats.total_operations += 1
@@ -441,6 +516,114 @@ class RedisMemoryManager(MemoryManagerInterface):
             logging.error(f"Error getting stats: {e}")
 
         return self.stats
+
+    def debug_session_keys(self, session_id: str = None, conversation_id: str = None) -> Dict[str, Any]:
+        """
+        NEW: Debug method to inspect Redis keys for a session
+        Useful for troubleshooting key consistency issues
+        """
+        try:
+            keys_to_check = []
+
+            # Check all possible key combinations
+            if conversation_id:
+                keys_to_check.extend([
+                    f"session:{conversation_id}:messages",
+                    f"session:{conversation_id}:context"
+                ])
+
+            if session_id and session_id != conversation_id:
+                keys_to_check.extend([
+                    f"session:{session_id}:messages",
+                    f"session:{session_id}:context"
+                ])
+
+            # Agent fallback keys
+            keys_to_check.extend([
+                f"agent:{self.agent_id}:messages",
+                f"agent:{self.agent_id}:context"
+            ])
+
+            result = {
+                'session_id': session_id,
+                'conversation_id': conversation_id,
+                'agent_id': self.agent_id,
+                'primary_identifier': self._get_primary_identifier(session_id, conversation_id),
+                'message_key': self._get_message_key(session_id, conversation_id),
+                'context_key': self._get_context_key(session_id, conversation_id),
+                'keys_checked': len(keys_to_check),
+                'key_status': {}
+            }
+
+            for key in keys_to_check:
+                exists = self.redis_client.exists(key)
+                if exists:
+                    key_type = self.redis_client.type(key)
+                    if key_type == 'list':
+                        length = self.redis_client.llen(key)
+                        result['key_status'][key] = {
+                            'exists': True,
+                            'type': key_type,
+                            'length': length
+                        }
+                    elif key_type == 'hash':
+                        length = self.redis_client.hlen(key)
+                        result['key_status'][key] = {
+                            'exists': True,
+                            'type': key_type,
+                            'length': length
+                        }
+                    else:
+                        result['key_status'][key] = {
+                            'exists': True,
+                            'type': key_type
+                        }
+                else:
+                    result['key_status'][key] = {'exists': False}
+
+            return result
+
+        except Exception as e:
+            return {'error': str(e)}
+
+    def debug_keys(self, pattern: str = "*") -> Dict[str, Any]:
+        """Enhanced debug method to inspect Redis keys"""
+        try:
+            keys = self.redis_client.keys(pattern)
+            result = {
+                'total_keys': len(keys),
+                'keys': []
+            }
+
+            for key in keys[:20]:  # Limit to first 20 keys
+                key_str = key.decode() if isinstance(key, bytes) else str(key)
+                key_type = self.redis_client.type(key_str)
+
+                if key_type == 'list':
+                    length = self.redis_client.llen(key_str)
+                    result['keys'].append({
+                        'key': key_str,
+                        'type': key_type,
+                        'length': length
+                    })
+                elif key_type == 'hash':
+                    length = self.redis_client.hlen(key_str)
+                    result['keys'].append({
+                        'key': key_str,
+                        'type': key_type,
+                        'length': length
+                    })
+                else:
+                    result['keys'].append({
+                        'key': key_str,
+                        'type': key_type
+                    })
+
+            return result
+
+        except Exception as e:
+            logging.error(f"Error debugging keys: {e}")
+            return {'error': str(e)}
 
 
 def create_redis_memory_manager(agent_id: str, redis_config: Dict[str, Any] = None):

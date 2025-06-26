@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Ambivo Agents CLI Interface - Version 1.0
+Ambivo Agents CLI Interface - Version 1.0 with Agent Caching and Memory Persistence
 
 Author: Hemant Gosain 'Sunny'
 Company: Ambivo
@@ -18,7 +18,7 @@ import os
 import uuid
 from pathlib import Path
 from datetime import datetime
-from typing import Optional, Dict, Any, Union
+from typing import Optional, Dict, Any, Union, Tuple
 
 # Import agents directly using clean imports
 from ambivo_agents import (
@@ -205,7 +205,7 @@ class ConfigManager:
 
 
 class AmbivoAgentsCLI:
-    """Command-line interface for Ambivo Agents with shell default and YAML config"""
+    """Enhanced CLI with agent caching and session management"""
 
     def __init__(self, config_manager: ConfigManager):
         self.config = config_manager
@@ -217,6 +217,11 @@ class AmbivoAgentsCLI:
             "mode": "shell_default"
         }
         self.session_file = Path.home() / ".ambivo_agents_session"
+
+        # 🆕 Agent caching system
+        self._session_agents: Dict[str, Tuple[Any, Any]] = {}  # Cache agents per session
+        self._agent_creation_lock = asyncio.Lock()  # Prevent race conditions
+
         self._ensure_auto_session()
 
         # Check import status
@@ -264,37 +269,160 @@ class AmbivoAgentsCLI:
             click.echo(f"❌ Failed to clear session: {e}")
             return False
 
-    async def create_agent(self, agent_class, additional_metadata: Dict[str, Any] = None):
-        """Create agent using the .create() pattern with configuration"""
-        metadata = {**self.session_metadata}
-        if additional_metadata:
-            metadata.update(additional_metadata)
+    async def get_or_create_agent(self, agent_class, session_id: str = None,
+                                  additional_metadata: Dict[str, Any] = None):
+        """
+        🆕 Get existing agent from cache or create new one
+        This ensures agent reuse within a session
+        """
+        if session_id is None:
+            session_id = self.get_current_session()
 
-        # Add configuration context
-        metadata['config'] = {
-            'agent_type': agent_class.__name__,
-            'configured': True
+        if not session_id:
+            raise ValueError("No session ID available for agent creation")
+
+        # Create cache key: agent_class + session_id
+        cache_key = f"{agent_class.__name__}_{session_id}"
+
+        # Use lock to prevent race conditions during agent creation
+        async with self._agent_creation_lock:
+            # Check if agent already exists in cache
+            if cache_key in self._session_agents:
+                agent, context = self._session_agents[cache_key]
+
+                if self.config.get('cli.verbose', False):
+                    click.echo(f"🔄 Reusing cached {agent_class.__name__} (ID: {agent.agent_id})")
+
+                return agent, context
+
+            # Create new agent if not in cache
+            if self.config.get('cli.verbose', False):
+                click.echo(f"🆕 Creating new {agent_class.__name__} for session {session_id[:8]}...")
+
+            metadata = {**self.session_metadata}
+            if additional_metadata:
+                metadata.update(additional_metadata)
+
+            metadata['config'] = {
+                'agent_type': agent_class.__name__,
+                'configured': True,
+                'cached': True,
+                'session_id': session_id
+            }
+
+            # 🔧 FIXED: Use consistent agent_id based on session + agent type
+            consistent_agent_id = f"{agent_class.__name__.lower()}_{session_id}"
+
+            agent, context = agent_class.create(
+                agent_id=consistent_agent_id,  # 🎯 CONSISTENT ID
+                user_id=self.user_id,
+                tenant_id=self.tenant_id,
+                session_metadata=metadata,
+                session_id=session_id,
+                conversation_id=session_id
+            )
+
+            # Cache the agent
+            self._session_agents[cache_key] = (agent, context)
+
+            if self.config.get('cli.verbose', False):
+                click.echo(f"✅ Cached {agent_class.__name__} (ID: {agent.agent_id})")
+                click.echo(f"📊 Total cached agents: {len(self._session_agents)}")
+
+            return agent, context
+
+    def clear_session_agents(self, session_id: str = None):
+        """
+        🆕 Clear cached agents for a specific session
+        Call this when session ends
+        """
+        if session_id is None:
+            session_id = self.get_current_session()
+
+        if not session_id:
+            return
+
+        keys_to_remove = [key for key in self._session_agents.keys() if key.endswith(session_id)]
+
+        for key in keys_to_remove:
+            agent, context = self._session_agents[key]
+
+            if self.config.get('cli.verbose', False):
+                click.echo(f"🗑️  Removing cached agent: {agent.agent_id}")
+
+            # Optionally cleanup the agent
+            try:
+                # Note: We can call cleanup_session here since we're ending the session
+                asyncio.create_task(agent.cleanup_session())
+            except Exception as e:
+                click.echo(f"⚠️  Warning during agent cleanup: {e}")
+
+            del self._session_agents[key]
+
+        if keys_to_remove and self.config.get('cli.verbose', False):
+            click.echo(f"🧹 Cleared {len(keys_to_remove)} agents for session {session_id[:8]}...")
+
+    def clear_all_agents(self):
+        """
+        🆕 Clear all cached agents (emergency cleanup)
+        """
+        if self.config.get('cli.verbose', False):
+            click.echo(f"🧹 Clearing all {len(self._session_agents)} cached agents...")
+
+        for key, (agent, context) in self._session_agents.items():
+            try:
+                asyncio.create_task(agent.cleanup_session())
+            except Exception as e:
+                click.echo(f"⚠️  Warning during agent cleanup: {e}")
+
+        self._session_agents.clear()
+
+    def get_cached_agents_info(self) -> Dict[str, Any]:
+        """
+        🆕 Get information about cached agents
+        """
+        info = {
+            'total_agents': len(self._session_agents),
+            'agents': []
         }
 
-        agent, context = agent_class.create(
-            user_id=self.user_id,
-            tenant_id=self.tenant_id,
-            session_metadata=metadata
-        )
+        for key, (agent, context) in self._session_agents.items():
+            agent_info = {
+                'cache_key': key,
+                'agent_id': agent.agent_id,
+                'agent_type': agent.__class__.__name__,
+                'session_id': context.session_id,
+                'created_at': context.created_at.isoformat(),
+                'memory_available': hasattr(agent, 'memory') and agent.memory is not None
+            }
+            info['agents'].append(agent_info)
 
-        if self.config.get('cli.verbose', False):
-            click.echo(f"✅ Created {agent_class.__name__} (Session: {context.session_id[:8]}...)")
+        return info
 
-        return agent, context
+    # 🔧 UPDATED: Replace the old create_agent method
+    async def create_agent(self, agent_class, additional_metadata: Dict[str, Any] = None):
+        """
+        🔧 UPDATED: Now uses caching system
+        Kept for backward compatibility but delegates to get_or_create_agent
+        """
+        return await self.get_or_create_agent(agent_class, None, additional_metadata)
 
     async def smart_message_routing(self, message: str) -> str:
-        """Smart routing to appropriate agent based on message content with configuration"""
+        """
+        🔧 UPDATED: Smart routing with agent caching
+        Now reuses agents instead of creating new ones each time
+        """
         message_lower = message.lower()
+        current_session = self.get_current_session()
+
+        if not current_session:
+            raise ValueError("No active session for message processing")
 
         # 🎬 YouTube Download Detection
         if any(keyword in message_lower for keyword in ['youtube', 'download', 'youtu.be']) and (
                 'http' in message or 'www.' in message):
-            agent, context = await self.create_agent(YouTubeDownloadAgent, {"operation": "youtube_download"})
+            agent, context = await self.get_or_create_agent(YouTubeDownloadAgent, current_session,
+                                                            {"operation": "youtube_download"})
 
             try:
                 # Extract YouTube URLs
@@ -321,58 +449,59 @@ class AmbivoAgentsCLI:
                     else:
                         result = await agent._download_youtube(url, audio_only=audio_only)
 
-                    await agent.cleanup_session()
+                    # 🔧 REMOVED: await agent.cleanup_session() - Agent stays cached
 
                     if result['success']:
-                        return f"✅ YouTube operation completed!\n{result.get('message', '')}\nSession: {context.session_id}"
+                        return f"✅ YouTube operation completed!\n{result.get('message', '')}\nSession: {context.session_id}\nAgent: {agent.agent_id}"
                     else:
                         return f"❌ YouTube operation failed: {result['error']}"
                 else:
-                    await agent.cleanup_session()
                     return "❌ No valid YouTube URLs found in message"
 
             except Exception as e:
-                await agent.cleanup_session()
                 return f"❌ YouTube operation error: {e}"
 
         # 🎵 Media Processing Detection
         elif any(keyword in message_lower for keyword in
                  ['extract audio', 'convert video', 'media', 'ffmpeg', '.mp4', '.avi', '.mov']):
-            agent, context = await self.create_agent(MediaEditorAgent, {"operation": "media_processing"})
+            agent, context = await self.get_or_create_agent(MediaEditorAgent, current_session,
+                                                            {"operation": "media_processing"})
 
             try:
                 supported_formats = self.config.get('agents.media.supported_formats', ['mp4', 'avi', 'mov'])
 
                 if 'extract audio' in message_lower:
-                    return f"🎵 Media Editor Agent ready for audio extraction!\nSupported formats: {', '.join(supported_formats)}\nPlease provide the input file path for processing."
+                    return f"🎵 Media Editor Agent ready for audio extraction!\nSupported formats: {', '.join(supported_formats)}\nAgent: {agent.agent_id}\nSession: {context.session_id}"
                 elif 'convert' in message_lower:
-                    return f"🎥 Media Editor Agent ready for video conversion!\nSupported formats: {', '.join(supported_formats)}\nPlease provide the input file path and target format."
+                    return f"🎥 Media Editor Agent ready for video conversion!\nSupported formats: {', '.join(supported_formats)}\nAgent: {agent.agent_id}"
                 else:
-                    return f"🎬 Media Editor Agent ready!\nSupported formats: {', '.join(supported_formats)}\nI can extract audio, convert videos, resize, trim, and more."
+                    return f"🎬 Media Editor Agent ready!\nSupported formats: {', '.join(supported_formats)}\nAgent: {agent.agent_id}"
 
-            finally:
-                await agent.cleanup_session()
+            except Exception as e:
+                return f"❌ Media processing error: {e}"
 
         # 📚 Knowledge Base Detection
         elif any(keyword in message_lower for keyword in ['knowledge base', 'ingest', 'query', 'document', 'kb ']):
-            agent, context = await self.create_agent(KnowledgeBaseAgent, {"operation": "knowledge_base"})
+            agent, context = await self.get_or_create_agent(KnowledgeBaseAgent, current_session,
+                                                            {"operation": "knowledge_base"})
 
             try:
                 chunk_size = self.config.get('agents.knowledge_base.chunk_size', 1000)
 
                 if 'ingest' in message_lower:
-                    return f"📄 Knowledge Base Agent ready for document ingestion!\nChunk size: {chunk_size}\nPlease provide the document path and knowledge base name."
+                    return f"📄 Knowledge Base Agent ready for document ingestion!\nChunk size: {chunk_size}\nAgent: {agent.agent_id}"
                 elif 'query' in message_lower:
-                    return f"🔍 Knowledge Base Agent ready for queries!\nPlease provide your question and knowledge base name."
+                    return f"🔍 Knowledge Base Agent ready for queries!\nAgent: {agent.agent_id}"
                 else:
-                    return f"📚 Knowledge Base Agent ready!\nI can ingest documents and answer questions based on your knowledge bases."
+                    return f"📚 Knowledge Base Agent ready!\nAgent: {agent.agent_id}"
 
-            finally:
-                await agent.cleanup_session()
+            except Exception as e:
+                return f"❌ Knowledge base error: {e}"
 
         # 🔍 Web Search Detection
         elif any(keyword in message_lower for keyword in ['search', 'find', 'look up', 'google']):
-            agent, context = await self.create_agent(WebSearchAgent, {"operation": "web_search"})
+            agent, context = await self.get_or_create_agent(WebSearchAgent, current_session,
+                                                            {"operation": "web_search"})
 
             try:
                 max_results = self.config.get('agents.web_search.default_max_results', 5)
@@ -385,7 +514,6 @@ class AmbivoAgentsCLI:
                         break
 
                 result = await agent._search_web(search_query, max_results=max_results)
-                await agent.cleanup_session()
 
                 if result['success']:
                     response = f"🔍 Search Results for '{search_query}':\n\n"
@@ -393,19 +521,19 @@ class AmbivoAgentsCLI:
                         response += f"{i}. **{res.get('title', 'No title')}**\n"
                         response += f"   {res.get('url', 'No URL')}\n"
                         response += f"   {res.get('snippet', 'No snippet')[:150]}...\n\n"
-                    response += f"Session: {context.session_id}"
+                    response += f"Agent: {agent.agent_id}\nSession: {context.session_id}"
                     return response
                 else:
                     return f"❌ Search failed: {result['error']}"
 
             except Exception as e:
-                await agent.cleanup_session()
                 return f"❌ Search error: {e}"
 
         # 🕷️ Web Scraping Detection
         elif any(keyword in message_lower for keyword in ['scrape', 'extract', 'crawl']) and (
                 'http' in message or 'www.' in message):
-            agent, context = await self.create_agent(WebScraperAgent, {"operation": "web_scraping"})
+            agent, context = await self.get_or_create_agent(WebScraperAgent, current_session,
+                                                            {"operation": "web_scraping"})
 
             try:
                 # Extract URLs
@@ -416,31 +544,34 @@ class AmbivoAgentsCLI:
                 if urls:
                     url = urls[0]
                     user_agent = self.config.get('agents.web_scraper.user_agent', 'Ambivo-Agent/1.0')
-                    return f"🕷️ Web Scraper Agent ready to scrape: {url}\nUser-Agent: {user_agent}\nSession: {context.session_id}\n(Note: Actual scraping requires proper configuration)"
+                    return f"🕷️ Web Scraper Agent ready to scrape: {url}\nUser-Agent: {user_agent}\nAgent: {agent.agent_id}\nSession: {context.session_id}"
                 else:
                     return "❌ No valid URLs found for scraping"
 
-            finally:
-                await agent.cleanup_session()
+            except Exception as e:
+                return f"❌ Web scraping error: {e}"
 
         # 💻 Code Execution Detection
         elif '```' in message:
-            agent, context = await self.create_agent(CodeExecutorAgent, {"operation": "code_execution"})
+            agent, context = await self.get_or_create_agent(CodeExecutorAgent, current_session,
+                                                            {"operation": "code_execution"})
 
             try:
                 allowed_languages = self.config.get('agents.code_executor.allowed_languages', ['python', 'javascript'])
-                return f"💻 Code Executor Agent ready!\nAllowed languages: {', '.join(allowed_languages)}\nSession: {context.session_id}\n(Note: Code execution requires Docker configuration)"
+                return f"💻 Code Executor Agent ready!\nAllowed languages: {', '.join(allowed_languages)}\nAgent: {agent.agent_id}\nSession: {context.session_id}"
 
-            finally:
-                await agent.cleanup_session()
+            except Exception as e:
+                return f"❌ Code execution error: {e}"
 
-        # 🤖 General Assistant (fallback) - Route to AssistantAgent
+        # 🤖 General Assistant (fallback) - UPDATED for caching
         else:
-            agent, context = await self.create_agent(AssistantAgent, {"operation": "general_assistance"})
+            agent, context = await self.get_or_create_agent(AssistantAgent, current_session,
+                                                            {"operation": "general_assistance"})
 
             try:
                 # Create an AgentMessage for the AssistantAgent
                 from ambivo_agents.core.base import AgentMessage, MessageType
+                import uuid
 
                 agent_message = AgentMessage(
                     id=f"msg_{str(uuid.uuid4())[:8]}",
@@ -452,15 +583,12 @@ class AmbivoAgentsCLI:
                     conversation_id=context.conversation_id
                 )
 
-                # Process the message with the AssistantAgent
                 response_message = await agent.process_message(agent_message, context.to_execution_context())
 
-                await agent.cleanup_session()
 
                 return response_message.content
 
             except Exception as e:
-                await agent.cleanup_session()
                 return f"❌ Error processing your question: {e}"
 
 
@@ -500,6 +628,7 @@ def cli(ctx, config: Optional[str], verbose: bool):
     - YAML Configuration Support
     - Shell Mode by Default
     - Auto-Session Creation
+    - Agent Caching & Reuse
 
     Author: Hemant Gosain 'Sunny'
     Company: Ambivo
@@ -511,10 +640,10 @@ def cli(ctx, config: Optional[str], verbose: bool):
     cli_instance = initialize_cli(config, verbose)
 
     if verbose:
-        click.echo("🤖 Ambivo Agents CLI v1.0.0 - Shell Mode Default")
+        click.echo("🤖 Ambivo Agents CLI v1.0.0 - Shell Mode Default with Agent Caching")
         click.echo("📧 Contact: sgosain@ambivo.com")
         click.echo("🏢 Company: https://www.ambivo.com")
-        click.echo("🌟 Direct agent creation with YAML configuration")
+        click.echo("🌟 Agent caching and session management enabled")
 
     # If no command was provided, start shell mode by default
     if ctx.invoked_subcommand is None:
@@ -616,6 +745,10 @@ def session():
 @click.argument('session_name', required=False)
 def create(session_name: Optional[str]):
     """Create and activate a session (auto-generates UUID4 if no name provided)"""
+    # 🆕 Clear any existing cached agents before creating new session
+    if hasattr(cli_instance, '_session_agents'):
+        cli_instance.clear_all_agents()
+
     if session_name:
         session_prefix = cli_instance.config.get('cli.session_prefix', 'ambivo')
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -627,6 +760,7 @@ def create(session_name: Optional[str]):
     if cli_instance.set_current_session(full_session_id):
         click.echo(f"✅ Created and activated session: {full_session_id}")
         click.echo(f"💡 All commands will now use this session automatically")
+        click.echo(f"🧹 Cleared all cached agents")
         click.echo(f"🔧 Use 'ambivo-agents session end' to deactivate")
     else:
         click.echo("❌ Failed to create session")
@@ -637,9 +771,14 @@ def create(session_name: Optional[str]):
 @click.argument('session_name')
 def use(session_name: str):
     """Switch to an existing session"""
+    # Clear cached agents when switching sessions
+    if hasattr(cli_instance, '_session_agents'):
+        cli_instance.clear_all_agents()
+
     if cli_instance.set_current_session(session_name):
         click.echo(f"✅ Switched to session: {session_name}")
         click.echo(f"💡 All commands will now use this session")
+        click.echo(f"🧹 Cleared cached agents from previous session")
     else:
         click.echo("❌ Failed to switch session")
         sys.exit(1)
@@ -651,6 +790,11 @@ def current():
     current = cli_instance.get_current_session()
     if current:
         click.echo(f"📋 Current session: {current}")
+
+        # Show cached agents info
+        if hasattr(cli_instance, '_session_agents'):
+            agents_info = cli_instance.get_cached_agents_info()
+            click.echo(f"🤖 Cached agents: {agents_info['total_agents']}")
     else:
         click.echo("❌ No active session")
         click.echo("💡 Create one with: ambivo-agents session create my_session")
@@ -661,8 +805,14 @@ def end():
     """End the current session"""
     current = cli_instance.get_current_session()
     if current:
+        # 🆕 Clear cached agents for this session
+        if hasattr(cli_instance, '_session_agents'):
+            cli_instance.clear_session_agents(current)
+
         if cli_instance.clear_current_session():
             click.echo(f"✅ Ended session: {current}")
+            click.echo(f"🧹 Cleared cached agents for session")
+
             # Auto-create a replacement session if auto_session is enabled
             cli_instance._ensure_auto_session()
             new_session = cli_instance.get_current_session()
@@ -703,8 +853,8 @@ def history(limit: int, format: str):
 
     async def show_history():
         try:
-            # Create a temporary AssistantAgent with the shell session
-            agent, context = await cli_instance.create_agent(AssistantAgent, {
+            # 🔧 UPDATED: Use cached agent if available
+            agent, context = await cli_instance.get_or_create_agent(AssistantAgent, current_session, {
                 "operation": "history_access",
                 "use_session": current_session
             })
@@ -718,7 +868,6 @@ def history(limit: int, format: str):
 
             if not history_data:
                 click.echo(f"📋 No conversation history found for session: {current_session}")
-                await agent.cleanup_session()
                 return
 
             if format == 'json':
@@ -760,8 +909,6 @@ def history(limit: int, format: str):
                     if i < len(history_data):
                         click.echo("   " + "-" * 50)
 
-            await agent.cleanup_session()
-
         except Exception as e:
             click.echo(f"❌ Error retrieving history: {e}")
             import traceback
@@ -783,8 +930,9 @@ def summary(format: str):
 
     async def show_summary():
         try:
-            # Create a temporary AssistantAgent to access conversation summary
-            agent, context = await cli_instance.create_agent(AssistantAgent, {"operation": "summary_access"})
+            # 🔧 UPDATED: Use cached agent if available
+            agent, context = await cli_instance.get_or_create_agent(AssistantAgent, current_session,
+                                                                    {"operation": "summary_access"})
 
             # Get conversation summary
             summary_data = await agent.get_conversation_summary()
@@ -812,8 +960,6 @@ def summary(format: str):
                         click.echo(f"\n📝 Last Message:")
                         click.echo(f"   {summary_data['last_message']}")
 
-            await agent.cleanup_session()
-
         except Exception as e:
             click.echo(f"❌ Error retrieving summary: {e}")
 
@@ -832,8 +978,9 @@ def clear():
 
     async def clear_history():
         try:
-            # Create a temporary AssistantAgent to clear conversation history
-            agent, context = await cli_instance.create_agent(AssistantAgent, {"operation": "history_clear"})
+            # 🔧 UPDATED: Use cached agent if available
+            agent, context = await cli_instance.get_or_create_agent(AssistantAgent, current_session,
+                                                                    {"operation": "history_clear"})
 
             # Clear conversation history
             success = await agent.clear_conversation_history()
@@ -843,12 +990,38 @@ def clear():
             else:
                 click.echo(f"❌ Failed to clear conversation history")
 
-            await agent.cleanup_session()
-
         except Exception as e:
             click.echo(f"❌ Error clearing history: {e}")
 
     asyncio.run(clear_history())
+
+
+@session.command()
+def agents():
+    """🆕 Show cached agent information"""
+    current_session = cli_instance.get_current_session()
+
+    if not current_session:
+        click.echo("❌ No active session")
+        return
+
+    agents_info = cli_instance.get_cached_agents_info()
+
+    click.echo(f"🤖 **Cached Agents** (Session: {current_session[:8]}...)")
+    click.echo(f"📊 Total: {agents_info['total_agents']}")
+    click.echo("=" * 50)
+
+    if agents_info['agents']:
+        for agent_info in agents_info['agents']:
+            click.echo(f"\n📄 **{agent_info['agent_type']}**")
+            click.echo(f"   ID: {agent_info['agent_id']}")
+            click.echo(f"   Session: {agent_info['session_id'][:8]}...")
+            click.echo(f"   Memory: {'✅' if agent_info['memory_available'] else '❌'}")
+            click.echo(f"   Created: {agent_info['created_at']}")
+            click.echo(f"   Cache Key: {agent_info['cache_key']}")
+    else:
+        click.echo("\n📭 No cached agents")
+        click.echo("💡 Agents will be created when you send messages")
 
 
 @cli.command()
@@ -857,7 +1030,7 @@ def shell():
 
     # Show welcome message with configuration info
     click.echo("🚀 Ambivo Agents Shell v1.0.0 (Default Mode)")
-    click.echo("💡 YAML configuration support with auto-sessions")
+    click.echo("💡 YAML configuration support with auto-sessions and agent caching")
 
     if cli_instance.config.config_path:
         click.echo(f"📋 Config: {cli_instance.config.config_path}")
@@ -869,6 +1042,12 @@ def shell():
     if current_session:
         session_display = current_session[:8] + "..." if len(current_session) > 8 else current_session
         click.echo(f"🔗 Session: {session_display}")
+
+    # Show cached agents
+    if hasattr(cli_instance, '_session_agents'):
+        agents_info = cli_instance.get_cached_agents_info()
+        if agents_info['total_agents'] > 0:
+            click.echo(f"🤖 Cached agents: {agents_info['total_agents']}")
 
     click.echo("💡 Type 'help' for commands, 'exit' to quit")
     click.echo("-" * 60)
@@ -930,6 +1109,10 @@ def shell():
    session status             - Full session info
    session use <name>         - Switch to session
    session end                - End current session
+   session history            - Show conversation history
+   session summary            - Show session summary
+   session clear              - Clear conversation history
+   session agents             - Show cached agents
 
 💬 **Chat Commands:**
    chat <message>             - Send message (uses active session)
@@ -938,6 +1121,10 @@ def shell():
 🎬 **YouTube Commands:**
    youtube download <url>     - Download video/audio (config-aware)
    youtube info <url>         - Get video information
+
+🤖 **Agent Management:**
+   agents                     - Show cached agents
+   debug agents               - Debug agent memory status
 
 🔄 **Modes:**
    interactive               - Start chat-only interactive mode
@@ -955,6 +1142,8 @@ def shell():
    - Auto-session creation with UUID4
    - agent_config.yaml support
    - Configuration-aware agents
+   - Agent caching and reuse
+   - Persistent conversation history
    - Customizable themes and behavior
             """)
             return True
@@ -983,6 +1172,14 @@ def shell():
                 return handle_demo_command()
             elif cmd == 'examples':
                 return handle_examples_command()
+            elif cmd == 'agents':
+                return handle_agents_command()
+            elif cmd == 'debug':
+                if args and args[0] == 'agents':
+                    return handle_debug_agents_command()
+                else:
+                    click.echo("❌ Available debug commands: debug agents")
+                    return True
             else:
                 # Try to interpret as chat message
                 return handle_chat_command([command_line])
@@ -1073,172 +1270,79 @@ def shell():
 
     # Helper functions for session commands
     def handle_session_history(limit: int = 20):
-        """Handle session history command in shell"""
-        click.echo(f"🔍 Debug: handle_session_history called with limit {limit}")
+        """Handle session history command with database debugging"""
 
         async def show_history():
             current_session = cli_instance.get_current_session()
-            click.echo(f"🔍 Debug: Current session from cli_instance: {current_session}")
 
             if not current_session:
                 click.echo("❌ No active session")
                 return
 
             try:
-                # Create a temporary AssistantAgent to access conversation history
-                click.echo(f"🔍 Debug: Creating AssistantAgent...")
-                agent, context = await cli_instance.create_agent(AssistantAgent, {"operation": "history_access"})
-                click.echo(f"🔍 Debug: Agent created, context session: {context.session_id}")
+                # 🔧 UPDATED: Use cached agent
+                agent, context = await cli_instance.get_or_create_agent(AssistantAgent, current_session,
+                                                                        {"operation": "history_access"})
 
-                # Get conversation history
-                click.echo(f"🔍 Debug: Getting conversation history...")
-                history_data = await agent.get_conversation_history(limit=limit, include_metadata=True)
-                click.echo(f"🔍 Debug: Retrieved {len(history_data) if history_data else 0} messages")
+                # Show database info if verbose
+                if cli_instance.config.get('cli.verbose', False):
+                    if agent.memory and hasattr(agent.memory, 'redis_client'):
+                        redis_client = agent.memory.redis_client
+                        current_db = redis_client.connection_pool.connection_kwargs.get('db', 'Unknown')
+                        expected_key = f"session:{context.conversation_id}:messages"
 
-                if not history_data:
-                    click.echo(f"📋 No conversation history found for current session")
-                    await agent.cleanup_session()
-                    return
+                        click.echo(f"🔍 History Database: {current_db}")
+                        click.echo(f"🔍 History Key: {expected_key}")
 
-                session_display = current_session[:12] + "..." if len(current_session) > 12 else current_session
-                click.echo(f"📋 **Conversation History** (Session: {session_display})")
-                click.echo(f"📊 Total Messages: {len(history_data)}")
-                click.echo("=" * 50)
-
-                for i, msg in enumerate(history_data[-10:], 1):  # Show last 10 in shell
-                    content = msg.get('content', '')[:100] + "..." if len(msg.get('content', '')) > 100 else msg.get(
-                        'content', '')
-                    message_type = msg.get('message_type', 'unknown')
-
-                    if message_type == 'user_input':
-                        click.echo(f"{i}. 🗣️  You: {content}")
-                    elif message_type == 'agent_response':
-                        sender = msg.get('sender_id', 'agent')[:10]
-                        click.echo(f"{i}. 🤖 {sender}: {content}")
-                    else:
-                        click.echo(f"{i}. ℹ️  {message_type}: {content}")
-
-                await agent.cleanup_session()
-
-            except Exception as e:
-                click.echo(f"❌ Error retrieving history: {e}")
-                import traceback
-                click.echo(f"🔍 Debug traceback: {traceback.format_exc()}")
-
-        asyncio.run(show_history())
-        return True
-
-    def handle_session_summary():
-        """Handle session summary command in shell"""
-
-        async def show_summary():
-            current_session = cli_instance.get_current_session()
-
-            if not current_session:
-                click.echo("❌ No active session")
-                return
-
-            try:
-                # Create a temporary AssistantAgent to access conversation summary
-                agent, context = await cli_instance.create_agent(AssistantAgent, {"operation": "summary_access"})
-
-                # Get conversation summary
-                summary_data = await agent.get_conversation_summary()
-
-                if 'error' in summary_data:
-                    click.echo(f"❌ Error getting summary: {summary_data['error']}")
-                else:
-                    click.echo(f"📊 **Session Summary**")
-                    click.echo("=" * 30)
-                    click.echo(f"💬 Messages: {summary_data.get('total_messages', 0)} total")
-                    click.echo(f"⏱️  Duration: {summary_data.get('session_duration', 'Unknown')}")
-                    click.echo(f"🔗 Session: {current_session[:8]}...")
-
-                await agent.cleanup_session()
-
-            except Exception as e:
-                click.echo(f"❌ Error retrieving summary: {e}")
-
-        asyncio.run(show_summary())
-        return True
-
-    def handle_session_clear():
-        """Handle session clear command in shell"""
-
-        async def clear_history():
-            current_session = cli_instance.get_current_session()
-
-            if not current_session:
-                click.echo("❌ No active session")
-                return
-
-            try:
-                # Create a temporary AssistantAgent to clear conversation history
-                agent, context = await cli_instance.create_agent(AssistantAgent, {"operation": "history_clear"})
-
-                # Clear conversation history
-                success = await agent.clear_conversation_history()
-
-                if success:
-                    click.echo(f"✅ Cleared conversation history")
-                else:
-                    click.echo(f"❌ Failed to clear conversation history")
-
-                await agent.cleanup_session()
-
-            except Exception as e:
-                click.echo(f"❌ Error clearing history: {e}")
-
-        asyncio.run(clear_history())
-        return True
-
-    # Replace the handle_session_history function with this corrected version:
-
-    def handle_session_history(limit: int = 20):
-        """Handle session history command in shell"""
-
-        async def show_history():
-            # Use the consistent session retrieval method
-            current_session = cli_instance.get_current_session()
-
-            if not current_session:
-                click.echo("❌ No active session")
-                return
-
-            try:
-                # Create a temporary AssistantAgent to access conversation history
-                agent, context = await cli_instance.create_agent(AssistantAgent, {"operation": "history_access"})
-
-                # Override the context to use the current shell session
-                agent.context.session_id = current_session
-                agent.context.conversation_id = current_session
+                        # Check key existence and length
+                        exists = redis_client.exists(expected_key)
+                        length = redis_client.llen(expected_key) if exists else 0
+                        click.echo(f"🔍 Key exists: {'✅' if exists else '❌'}")
+                        click.echo(f"🔍 Key length: {length}")
 
                 # Get conversation history
                 history_data = await agent.get_conversation_history(limit=limit, include_metadata=True)
 
                 if not history_data:
                     click.echo(f"📋 No conversation history found for current session")
-                    await agent.cleanup_session()
+
+                    # Enhanced debug for empty history
+                    if cli_instance.config.get('cli.verbose', False) and agent.memory:
+                        click.echo(f"\n🔍 **Debugging Empty History**")
+
+                        # Test retrieval directly
+                        try:
+                            direct_messages = agent.memory.get_recent_messages(limit=10,
+                                                                               conversation_id=context.conversation_id)
+                            click.echo(f"Direct get_recent_messages: {len(direct_messages)} messages")
+
+                            if direct_messages:
+                                click.echo(f"Sample direct message:")
+                                sample = direct_messages[0]
+                                if isinstance(sample, dict):
+                                    click.echo(f"  Content: {sample.get('content', 'No content')[:50]}...")
+                                    click.echo(f"  Type: {sample.get('message_type', 'No type')}")
+                        except Exception as e:
+                            click.echo(f"Direct retrieval error: {e}")
+
                     return
 
+                # Display history (rest stays the same)
                 session_display = current_session[:12] + "..." if len(current_session) > 12 else current_session
                 click.echo(f"📋 **Conversation History** (Session: {session_display})")
                 click.echo(f"📊 Total Messages: {len(history_data)}")
                 click.echo("=" * 50)
 
-                # Show last 10 messages in shell for readability
                 recent_messages = history_data[-10:] if len(history_data) > 10 else history_data
 
                 for i, msg in enumerate(recent_messages, 1):
                     content = msg.get('content', '')
-                    # Truncate long messages for shell display
                     if len(content) > 100:
                         content = content[:100] + "..."
 
                     message_type = msg.get('message_type', 'unknown')
                     timestamp = msg.get('timestamp', 'Unknown time')
 
-                    # Format timestamp
                     if isinstance(timestamp, str):
                         try:
                             from datetime import datetime
@@ -1257,9 +1361,6 @@ def shell():
 
                 if len(history_data) > 10:
                     click.echo(f"\n💡 Showing last 10 of {len(history_data)} messages")
-                    click.echo("💡 Use 'session history 50' to see more")
-
-                await agent.cleanup_session()
 
             except Exception as e:
                 click.echo(f"❌ Error retrieving history: {e}")
@@ -1270,15 +1371,80 @@ def shell():
         asyncio.run(show_history())
         return True
 
+    def handle_session_summary():
+        """Handle session summary command in shell"""
+
+        async def show_summary():
+            current_session = cli_instance.get_current_session()
+
+            if not current_session:
+                click.echo("❌ No active session")
+                return
+
+            try:
+                # 🔧 UPDATED: Use cached agent
+                agent, context = await cli_instance.get_or_create_agent(AssistantAgent, current_session,
+                                                                        {"operation": "summary_access"})
+
+                # Get conversation summary
+                summary_data = await agent.get_conversation_summary()
+
+                if 'error' in summary_data:
+                    click.echo(f"❌ Error getting summary: {summary_data['error']}")
+                else:
+                    click.echo(f"📊 **Session Summary**")
+                    click.echo("=" * 30)
+                    click.echo(f"💬 Messages: {summary_data.get('total_messages', 0)} total")
+                    click.echo(f"⏱️  Duration: {summary_data.get('session_duration', 'Unknown')}")
+                    click.echo(f"🔗 Session: {current_session[:8]}...")
+
+            except Exception as e:
+                click.echo(f"❌ Error retrieving summary: {e}")
+
+        asyncio.run(show_summary())
+        return True
+
+    def handle_session_clear():
+        """Handle session clear command in shell"""
+
+        async def clear_history():
+            current_session = cli_instance.get_current_session()
+
+            if not current_session:
+                click.echo("❌ No active session")
+                return
+
+            try:
+                # 🔧 UPDATED: Use cached agent
+                agent, context = await cli_instance.get_or_create_agent(AssistantAgent, current_session,
+                                                                        {"operation": "history_clear"})
+
+                # Clear conversation history
+                success = await agent.clear_conversation_history()
+
+                if success:
+                    click.echo(f"✅ Cleared conversation history")
+                else:
+                    click.echo(f"❌ Failed to clear conversation history")
+
+            except Exception as e:
+                click.echo(f"❌ Error clearing history: {e}")
+
+        asyncio.run(clear_history())
+        return True
+
     def handle_session_command(args):
-        """Handle session subcommands"""
+        """🔧 UPDATED: Handle session subcommands with agent cleanup"""
         if not args:
-            click.echo("❌ Usage: session <create|current|status|use|end|history|summary|clear> [args]")
+            click.echo("❌ Usage: session <create|current|status|use|end|history|summary|clear|agents> [args]")
             return True
 
         subcmd = args[0].lower()
 
         if subcmd == 'create':
+            # Clear any existing cached agents before creating new session
+            cli_instance.clear_all_agents()
+
             if len(args) > 1:
                 session_name = args[1]
                 session_prefix = cli_instance.config.get('cli.session_prefix', 'ambivo')
@@ -1290,6 +1456,7 @@ def shell():
 
             if cli_instance.set_current_session(full_session_id):
                 click.echo(f"✅ Created and activated session: {full_session_id}")
+                click.echo(f"🧹 Cleared all cached agents")
             else:
                 click.echo("❌ Failed to create session")
 
@@ -1297,12 +1464,18 @@ def shell():
             current = cli_instance.get_current_session()
             if current:
                 click.echo(f"📋 Current session: {current}")
+
+                # Show cached agents info
+                agents_info = cli_instance.get_cached_agents_info()
+                click.echo(f"🤖 Cached agents: {agents_info['total_agents']}")
             else:
                 click.echo("❌ No active session")
 
         elif subcmd == 'status':
             current = cli_instance.get_current_session()
             auto_session = cli_instance.config.get('cli.auto_session', True)
+            agents_info = cli_instance.get_cached_agents_info()
+
             click.echo("📊 Session Status:")
             if current:
                 click.echo(f"  ✅ Active session: {current}")
@@ -1310,22 +1483,33 @@ def shell():
             else:
                 click.echo("  ❌ No active session")
             click.echo(f"  🔄 Auto-session: {auto_session}")
+            click.echo(f"  🤖 Cached agents: {agents_info['total_agents']}")
 
         elif subcmd == 'use':
             if len(args) < 2:
                 click.echo("❌ Usage: session use <name>")
                 return True
             session_name = args[1]
+
+            # Clear cached agents when switching
+            cli_instance.clear_all_agents()
+
             if cli_instance.set_current_session(session_name):
                 click.echo(f"✅ Switched to session: {session_name}")
+                click.echo(f"🧹 Cleared cached agents from previous session")
             else:
                 click.echo("❌ Failed to switch session")
 
         elif subcmd == 'end':
             current = cli_instance.get_current_session()
             if current:
+                # Clear cached agents for this session
+                cli_instance.clear_session_agents(current)
+
                 if cli_instance.clear_current_session():
                     click.echo(f"✅ Ended session: {current}")
+                    click.echo(f"🧹 Cleared cached agents for session")
+
                     # Auto-create replacement session
                     cli_instance._ensure_auto_session()
                     new_session = cli_instance.get_current_session()
@@ -1336,7 +1520,6 @@ def shell():
             else:
                 click.echo("❌ No active session to end")
 
-        # ADD THESE MISSING CASES:
         elif subcmd == 'history':
             limit = 20  # default
             if len(args) > 1 and args[1].isdigit():
@@ -1353,11 +1536,30 @@ def shell():
             else:
                 click.echo("❌ Operation cancelled")
 
+        elif subcmd == 'agents':
+            # Show cached agents for current session
+            current_session = cli_instance.get_current_session()
+            agents_info = cli_instance.get_cached_agents_info()
+
+            click.echo(f"🤖 **Cached Agents** (Session: {current_session[:8] if current_session else 'None'}...)")
+            click.echo(f"📊 Total: {agents_info['total_agents']}")
+            click.echo("=" * 40)
+
+            if agents_info['agents']:
+                for agent_info in agents_info['agents']:
+                    click.echo(f"\n📄 {agent_info['agent_type']}")
+                    click.echo(f"   ID: {agent_info['agent_id']}")
+                    click.echo(f"   Memory: {'✅' if agent_info['memory_available'] else '❌'}")
+                    click.echo(f"   Created: {agent_info['created_at']}")
+            else:
+                click.echo("\n📭 No cached agents")
+
         else:
             click.echo(f"❌ Unknown session command: {subcmd}")
-            click.echo("💡 Available: create, current, status, use, end, history, summary, clear")
+            click.echo("💡 Available: create, current, status, use, end, history, summary, clear, agents")
 
         return True
+
     def handle_chat_command(args):
         """Handle chat command"""
         if not args:
@@ -1459,7 +1661,13 @@ def shell():
         click.echo("✅ CLI is working")
         click.echo("✅ Session management available")
         click.echo("✅ Smart routing available")
+        click.echo("✅ Agent caching enabled")
         click.echo(f"✅ Configuration loaded: {cli_instance.config.config_path or 'defaults'}")
+
+        # Show cached agents
+        agents_info = cli_instance.get_cached_agents_info()
+        click.echo(f"🤖 Cached agents: {agents_info['total_agents']}")
+
         return True
 
     def handle_demo_command():
@@ -1475,8 +1683,55 @@ def shell():
         click.echo("  session create my_project")
         click.echo("  chat 'Hello, I need help with video processing'")
         click.echo("  youtube download https://youtube.com/watch?v=example")
+        click.echo("  session history")
+        click.echo("  session agents")
         click.echo("  config show")
         click.echo("  session end")
+        return True
+
+    def handle_agents_command():
+        """🆕 Handle agents command - show cached agents"""
+        agents_info = cli_instance.get_cached_agents_info()
+        current_session = cli_instance.get_current_session()
+
+        click.echo(f"🤖 **Cached Agents** (Session: {current_session[:8] if current_session else 'None'}...)")
+        click.echo(f"📊 Total: {agents_info['total_agents']}")
+        click.echo("=" * 40)
+
+        if agents_info['agents']:
+            for agent_info in agents_info['agents']:
+                click.echo(f"\n📄 {agent_info['agent_type']}")
+                click.echo(f"   ID: {agent_info['agent_id']}")
+                click.echo(f"   Memory: {'✅' if agent_info['memory_available'] else '❌'}")
+                click.echo(f"   Created: {agent_info['created_at']}")
+        else:
+            click.echo("\n📭 No cached agents")
+            click.echo("💡 Agents will be created when you send messages")
+
+        return True
+
+    def handle_debug_agents_command():
+        """🆕 Handle debug agents command"""
+        click.echo(f"\n🔍 CACHED AGENTS DEBUG")
+        click.echo("=" * 50)
+
+        agents_info = cli_instance.get_cached_agents_info()
+        current_session = cli_instance.get_current_session()
+
+        click.echo(f"Current session: {current_session}")
+        click.echo(f"Total cached agents: {agents_info['total_agents']}")
+
+        if agents_info['agents']:
+            for agent_info in agents_info['agents']:
+                click.echo(f"\n🤖 {agent_info['agent_type']}:")
+                click.echo(f"   Cache Key: {agent_info['cache_key']}")
+                click.echo(f"   Agent ID: {agent_info['agent_id']}")
+                click.echo(f"   Session: {agent_info['session_id']}")
+                click.echo(f"   Memory: {'✅' if agent_info['memory_available'] else '❌'}")
+                click.echo(f"   Created: {agent_info['created_at']}")
+        else:
+            click.echo("\n📭 No cached agents")
+
         return True
 
     # Main shell loop
@@ -1548,7 +1803,7 @@ def chat(message: str, conversation: Optional[str], format: str):
                 'message': message,
                 'conversation_id': conv_id,
                 'session_source': session_source,
-                'paradigm': 'direct_agent_creation',
+                'paradigm': 'cached_agent_reuse',
                 'config_loaded': cli_instance.config.config_path is not None
             }
             click.echo(json.dumps(result, indent=2))
@@ -1557,7 +1812,7 @@ def chat(message: str, conversation: Optional[str], format: str):
             if verbose:
                 click.echo(f"\n⏱️  Processing time: {processing_time:.2f}s")
                 click.echo(f"📋 Conversation: {conv_id}")
-                click.echo(f"🌟 Using .create() paradigm")
+                click.echo(f"🌟 Using cached agent reuse")
 
     asyncio.run(process())
 

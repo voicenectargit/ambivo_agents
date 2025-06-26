@@ -1,10 +1,9 @@
 # Ambivo Agents - Multi-Agent AI System
 
-A comprehensive toolkit for AI-powered automation including media processing, knowledge base operations, web scraping, YouTube downloads, and more.
+A minimalistic toolkit for AI-powered automation including media processing, knowledge base operations, web scraping, YouTube downloads, and more.
 
 ## 🌟  Direct Agent Creation Paradigm
 
-**Ambivo Agents now features a revolutionary `.create()` paradigm** that provides explicit context management and direct agent-to-tool communication:
 
 ```python
 # 🌟 RECOMMENDED APPROACH
@@ -24,9 +23,7 @@ await agent.cleanup_session()
 
 **Benefits of the approach:**
 - ✅ **Explicit Context**: Session IDs, user IDs, and metadata are always visible
-- ✅ **Direct Communication**: No service layer - talk directly to agents
 - ✅ **Better Control**: Full lifecycle management of agents and sessions
-- ✅ **Cleaner Code**: More predictable and easier to debug
 - ✅ **Built-in Memory**: Conversation history built into every agent
 
 ## 🚀 Features
@@ -37,7 +34,7 @@ await agent.cleanup_session()
 - **Redis Memory Management**: Persistent conversation memory with compression and caching
 - **Multi-Provider LLM Support**: Automatic failover between OpenAI, Anthropic, and AWS Bedrock
 - **Configuration-Driven**: All features controlled via `agent_config.yaml`
-- **🌟 Direct Agent Creation**:  `.create()` paradigm with explicit context management
+
 
 ### Available Agents
 
