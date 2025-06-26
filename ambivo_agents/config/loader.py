@@ -215,7 +215,7 @@ def validate_agent_capabilities(config: Dict[str, Any] = None) -> Dict[str, bool
             'media_editor' in config
     )
 
-    # NEW: YouTube download capability
+    # YouTube download capability
     capabilities['youtube_download'] = (
             agent_caps.get('enable_youtube_download', False) and
             'youtube_download' in config
@@ -258,7 +258,7 @@ def get_available_agent_types(config: Dict[str, Any] = None) -> Dict[str, bool]:
             'web_scraper': False,
             'web_search': False,
             'media_editor': False,
-            'youtube_download': False  # NEW
+            'youtube_download': False
         }
 
 

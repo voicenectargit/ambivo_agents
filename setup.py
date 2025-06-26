@@ -1,36 +1,49 @@
 #!/usr/bin/env python3
 """
-Setup script for Ambivo Agents
+Ambivo Agents Setup Script
 
 Author: Hemant Gosain 'Sunny'
 Company: Ambivo
 Email: sgosain@ambivo.com
-License: MIT
 """
 
 from setuptools import setup, find_packages
+import os
 
-with open("README.md", "r", encoding="utf-8") as fh:
-    long_description = fh.read()
+# Read README for long description
+def read_readme():
+    try:
+        with open("README.md", "r", encoding="utf-8") as fh:
+            return fh.read()
+    except FileNotFoundError:
+        return "Ambivo Agents - Multi-Agent AI System"
 
-with open("requirements.txt", "r", encoding="utf-8") as fh:
-    requirements = [line.strip() for line in fh if line.strip() and not line.startswith("#")]
+# Read requirements
+def read_requirements():
+    try:
+        with open("requirements.txt", "r", encoding="utf-8") as fh:
+            return [line.strip() for line in fh if line.strip() and not line.startswith("#")]
+    except FileNotFoundError:
+        return [
+            "redis>=4.5.0",
+            "python-dotenv>=1.0.0",
+            "pyyaml>=6.0",
+            "click>=8.0.0",
+            "openai>=1.0.0",
+            "anthropic>=0.8.0",
+            "docker>=6.0.0",
+            "requests>=2.31.0",
+        ]
 
 setup(
     name="ambivo-agents",
-    version="1.0.0",
+    version="1.3.0",
     author="Hemant Gosain 'Sunny'",
     author_email="sgosain@ambivo.com",
-    description="A minimalistic multi-agent system for AI-powered automation",
-    long_description=long_description,
+    description="Multi-Agent AI System for automation including YouTube downloads, media processing, knowledge base operations, and more",
+    long_description=read_readme(),
     long_description_content_type="text/markdown",
-    url="https://github.com/yourusername/ambivo-agents",
-    project_urls={
-        "Bug Tracker": "https://github.com/yourusername/ambivo-agents/issues",
-        "Documentation": "https://docs.ambivo.com/agents",
-        "Source Code": "https://github.com/yourusername/ambivo-agents",
-        "Company": "https://www.ambivo.com",
-    },
+    url="https://github.com/ambivo/ambivo-agents",
     packages=find_packages(),
     classifiers=[
         "Development Status :: 4 - Beta",
@@ -42,30 +55,56 @@ setup(
         "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: 3.10",
         "Programming Language :: Python :: 3.11",
-        "Topic :: Scientific/Engineering :: Artificial Intelligence",
+        "Programming Language :: Python :: 3.12",
         "Topic :: Software Development :: Libraries :: Python Modules",
-
+        "Topic :: Internet :: WWW/HTTP :: Indexing/Search",
+        "Topic :: Multimedia :: Video",
+        "Topic :: Scientific/Engineering :: Artificial Intelligence",
     ],
     python_requires=">=3.8",
-    install_requires=requirements,
+    install_requires=read_requirements(),
+    extras_require={
+        "dev": [
+            "pytest>=7.0.0",
+            "pytest-asyncio>=0.21.0",
+            "black>=23.0.0",
+            "flake8>=6.0.0",
+            "mypy>=1.0.0",
+        ],
+        "all": [
+            "qdrant-client>=1.6.0",
+            "llama-index>=0.9.0",
+            "langchain-unstructured>=0.1.0",
+            "beautifulsoup4>=4.12.0",
+            "playwright>=1.40.0",
+            "pytubefix>=6.0.0",
+            "pydantic>=2.0.0",
+            "boto3>=1.34.0",
+            "langchain-openai>=0.0.5",
+            "langchain-anthropic>=0.1.0",
+            "langchain-aws>=0.1.0",
+        ]
+    },
     entry_points={
         "console_scripts": [
-            "ambivo-agents=ambivo_agents.cli:main",
-            "ambivo-server=ambivo_agents.server:main",
+            "ambivo-agents=ambivo_agents.cli:cli",
+            "ambivo=ambivo_agents.cli:cli",  # Short alias
         ],
     },
     include_package_data=True,
     package_data={
-        "ambivo_agents": ["*.yaml", "*.yml"],
+        "ambivo_agents": [
+            "*.yaml",
+            "*.yml",
+            "*.json",
+            "*.md",
+        ],
     },
-
-    # Additional metadata
-    maintainer="Hemant Gosain 'Sunny'",
-    maintainer_email="sgosain@ambivo.com",
-    license="MIT",
-    keywords=[
-        "ai", "agents", "automation", "multiagent", "llm", "openai", "anthropic",
-        "web-scraping", "media-processing", "knowledge-base", "vector-database",
-        "docker", "redis", "qdrant", "langchain", "llamaindex", "ffmpeg",
-    ],
+    keywords="ai, automation, agents, youtube, media, processing, knowledge-base, web-scraping",
+    project_urls={
+        "Bug Reports": "https://github.com/ambivo/ambivo-agents/issues",
+        "Source": "https://github.com/ambivo/ambivo-agents",
+        "Documentation": "https://github.com/ambivo/ambivo-agents/blob/main/README.md",
+        "Company": "https://www.ambivo.com",
+    },
 )

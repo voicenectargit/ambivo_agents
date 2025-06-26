@@ -163,7 +163,7 @@ class AgentSession:
             except Exception as e:
                 self.logger.error(f"Failed to create MediaEditorAgent: {e}")
 
-        # YouTube Download Agent (if enabled) - NEW
+        # YouTube Download Agent (if enabled)
         if self.capabilities.get('youtube_download', False):
             youtube_id = f"youtube_{self.session_id}"
             youtube_memory = create_redis_memory_manager(youtube_id, self.redis_config)

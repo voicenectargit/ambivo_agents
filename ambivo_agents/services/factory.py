@@ -347,7 +347,7 @@ class AgentFactory:
             from ..agents.media_editor import MediaEditorAgent
             return MediaEditorAgent(agent_id, memory_manager, llm_service, **kwargs)
 
-        elif agent_type == "youtube_download":  # NEW
+        elif agent_type == "youtube_download":
             if not capabilities.get('youtube_download', False):
                 raise ValueError("YouTube download not enabled in agent_config.yaml")
             from ..agents.youtube_download import YouTubeDownloadAgent

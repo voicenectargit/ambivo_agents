@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-knowledge_base_operations.py - FIXED VERSION
+knowledge_base_operations.py
 Real-world example of text ingestion and querying using Ambivo Agents Knowledge Base
 ALL CONFIGURATION FROM agent_config.yaml - NO HARDCODING
 

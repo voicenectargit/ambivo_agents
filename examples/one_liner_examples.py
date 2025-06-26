@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Simple One-Liner Examples with the NEW .create() Pattern
+Simple One-Liner Examples with the  .create() Pattern
 The absolute simplest way to get started with Ambivo Agents
 """
 
